@@ -1,0 +1,104 @@
+// 本地状态:~/.jovida/(可经 JOVIDA_HOME 覆盖)。无待办库——storeless。
+// credentials.json(token,0600)+ state.json(deviceId / lastServerVersion)。
+import { homedir } from 'node:os'
+import { join } from 'node:path'
+import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
+import { deriveDeviceId } from './machine-id'
+
+const DIR = process.env['JOVIDA_HOME'] ?? join(homedir(), '.jovida')
+const CRED = join(DIR, 'credentials.json')
+const STATE = join(DIR, 'state.json')
+
+/** passport token 记录(归一化形态)。 */
+export interface TokenRecord {
+  raw: string
+  vitaId: string
+  mode: string // MODE_ANONYMOUS | MODE_SIGN
+  accessDur: number
+  refreshDur: number
+  receivedAt: number // 落地 Unix 秒,推算过期
+}
+
+interface LocalState {
+  deviceId?: string
+  didStable?: boolean
+  lastServerVersion?: number
+}
+
+function ensureDir(): void {
+  if (!existsSync(DIR)) mkdirSync(DIR, { recursive: true, mode: 0o700 })
+}
+function readJson<T>(p: string): T | null {
+  try {
+    return JSON.parse(readFileSync(p, 'utf8')) as T
+  } catch {
+    return null
+  }
+}
+
+function loadState(): LocalState {
+  return readJson<LocalState>(STATE) ?? {}
+}
+function saveState(s: LocalState): void {
+  ensureDir()
+  writeFileSync(STATE, JSON.stringify(s, null, 2))
+}
+
+/** Vita-Did:首次派生(机器标识)并持久化;重装后由 machine-id 派生回同值。 */
+export function getDeviceId(): string {
+  const s = loadState()
+  if (s.deviceId) return s.deviceId
+  const { id, stable } = deriveDeviceId()
+  s.deviceId = id
+  s.didStable = stable
+  saveState(s)
+  return id
+}
+
+export function getLastServerVersion(): number {
+  return loadState().lastServerVersion ?? 0
+}
+export function setLastServerVersion(v: number): void {
+  const s = loadState()
+  s.lastServerVersion = v
+  saveState(s)
+}
+
+/** 凭证:apiKey = 长效自愈凭证;token = 短效 SIGN token(由 apiKey exchange / 过渡 paste 得来)。 */
+export interface Credentials {
+  apiKey?: string
+  token?: TokenRecord
+}
+
+function readCreds(): Credentials | null {
+  return readJson<Credentials>(CRED)
+}
+function writeCreds(c: Credentials): void {
+  ensureDir()
+  writeFileSync(CRED, JSON.stringify(c), { mode: 0o600 })
+}
+
+export function getToken(): TokenRecord | null {
+  return readCreds()?.token ?? null
+}
+export function setToken(rec: TokenRecord): void {
+  const c = readCreds() ?? {}
+  c.token = rec
+  writeCreds(c)
+}
+export function getApiKey(): string | null {
+  return readCreds()?.apiKey ?? null
+}
+export function setApiKey(key: string): void {
+  const c = readCreds() ?? {}
+  c.apiKey = key
+  writeCreds(c)
+}
+/** 退出:清 apiKey + token。 */
+export function clearCredentials(): void {
+  try {
+    rmSync(CRED)
+  } catch {
+    /* 不存在即忽略 */
+  }
+}
