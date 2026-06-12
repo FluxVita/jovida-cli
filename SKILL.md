@@ -9,7 +9,7 @@ allowed-tools: Bash(jovida:*)
 Help the user capture and manage their **Jovida Daily** todos by shelling out to the `jovida` command-line tool. Run `jovida` commands through your shell — the CLI is the interface to the user's account, and changes sync to their other Jovida devices.
 
 > **If the `jovida` command isn't found**, the Jovida Daily CLI isn't installed here — tell the user to install it (see the jovida-cli README); don't pretend you tracked anything.
-> **If a command exits with code `2` (`NOT_SIGNED_IN`)**, the CLI isn't logged in — tell the user to run `jovida login`. There is **no anonymous mode**; nothing works until they sign in. You can't sign in for them (it needs an interactive browser sign-in).
+> **Sign-in is required — and it is the user's step.** No anonymous mode; nothing works until the user runs `jovida login` (interactive browser sign-in — you **cannot** do it for them, and **must not** skip it). Be proactive: if you're not sure they're signed in, run `jovida whoami` first. If `whoami` or any command exits `2` (`NOT_SIGNED_IN`), **stop, tell the user to run `jovida login`, and wait until they confirm before retrying** — don't silently drop the task or claim you can't help.
 
 ## Core mental model — read this first
 

@@ -4,7 +4,7 @@
 
 The **Jovida Daily CLI** — capture and manage your **Jovida Daily** todos from the terminal and from AI coding agents (Codex, Claude Code, …). It ships with an agent **skill** so your AI knows when and how to use it.
 
-> **If you are the AI agent setting this up:** do the steps in **[Setup](#setup)** in order. You **cannot** do step 3 (`jovida login`) — it needs an interactive browser sign-in, so hand that step to the user and wait. After setup, drive the CLI per **[`SKILL.md`](./SKILL.md)**; whenever a command exits with code `2` (`NOT_SIGNED_IN`), ask the user to run `jovida login` again.
+> **If you are the AI agent setting this up:** do **[Setup](#setup)** in order. Steps 1–2 you do yourself. **Step 3 (`jovida login`) you cannot do — but you must not skip it:** after installing, explicitly tell the user to run `jovida login` (a browser opens; they sign in and approve) and wait until they confirm. Verify with `jovida whoami`. Don't consider setup finished — or try to manage todos — until sign-in succeeds. After that, drive the CLI per **[`SKILL.md`](./SKILL.md)**; if any command later exits `2` (`NOT_SIGNED_IN`), stop and ask the user to run `jovida login` again.
 
 > **Beta.** Jovida Daily is in private beta; the CLI requires a Jovida account (no anonymous mode).
 

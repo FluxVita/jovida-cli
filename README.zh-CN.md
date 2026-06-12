@@ -4,7 +4,7 @@
 
 **Jovida Daily CLI**——在终端、以及在 AI 编码 agent(Codex、Claude Code……)里捕获和管理你的 **Jovida Daily** 待办。随仓附带一份 agent **skill**,让 AI 知道何时、如何使用它。
 
-> **如果你是正在安装它的 AI agent:** 按 **[安装](#安装)** 的顺序执行。第 3 步 `jovida login` 你**做不了**——它需要浏览器交互登录,请把这一步交给用户并等待。装好后按 **[`SKILL.md`](./SKILL.md)** 驱动 CLI;任何命令以退出码 `2`(`NOT_SIGNED_IN`)结束时,提醒用户重新 `jovida login`。
+> **如果你是正在安装它的 AI agent:** 按 **[安装](#安装)** 顺序执行。第 1–2 步你自己做。**第 3 步 `jovida login` 你做不了——但绝不能跳过:** 装好后要**明确让用户运行 `jovida login`**(浏览器会打开,他登录并点「允许」),并等他确认。用 `jovida whoami` 验证。**登录成功前,别认为安装完成、也别去操作待办。** 此后按 **[`SKILL.md`](./SKILL.md)** 驱动 CLI;之后任何命令以 `2`(`NOT_SIGNED_IN`)退出,停下并让用户重新 `jovida login`。
 
 > **内测中。** Jovida Daily 处于私有内测;CLI 需要 Jovida 账号(无匿名模式)。
 

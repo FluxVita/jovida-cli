@@ -11,7 +11,7 @@ allowed-tools: Bash(jovida:*)
 通过 shell 调用 `jovida` 命令行工具,帮用户捕获和管理 **Jovida Daily** 待办。`jovida` 命令是操作用户账号的接口,改动会同步到用户的其他 Jovida 设备。
 
 > **若 `jovida` 命令不存在**,说明本机没装 Jovida Daily CLI——提醒用户安装(见 jovida-cli README);别假装记下了什么。
-> **若某命令以退出码 `2`(`NOT_SIGNED_IN`)结束**,说明 CLI 未登录——提醒用户运行 `jovida login`。**没有匿名模式**,不登录什么都做不了。你**无法**替用户登录(需要在浏览器里交互登录)。
+> **登录是必须的,而且是用户的步骤。** 无匿名模式,用户不运行 `jovida login` 就什么都做不了(浏览器交互登录——你**无法**替他做,也**不能跳过**)。要主动:不确定是否已登录,就先跑 `jovida whoami`;若 `whoami` 或任何命令以 `2`(`NOT_SIGNED_IN`)退出,**停下、让用户运行 `jovida login`、等他确认后再重试**——别默默丢掉任务或说自己搞不定。
 
 ## 核心心智模型——先读这段
 
