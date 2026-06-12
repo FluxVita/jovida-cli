@@ -55,7 +55,7 @@ allowed-tools: Bash(jovida:*)
   → `{ "entry_id", "status": "created" }`。**一次一条**——多条就多次运行。
 - `jovida update <entry_id> [--title <s>] [--when <ISO>] [--priority …] [--remind <ISO> …] [--category <s>] [--desc <s>] [--subtask "<标题>" …] [--hint <s>]`
   → `{ "entry_id", "status": "updated" }`。
-- `jovida complete <entry_id>` → `{ "entry_id", "status": "completed" }`。
+- `jovida complete <entry_id> [<entry_id> ...]` → `{ "entry_ids", "status": "completed" }`。
 - `jovida delete <entry_id> [<entry_id> …]` → `{ "entry_ids": […], "status": "deleted" }`。多个 id 一次传。
 
 标题及含空格的值要加引号。**`--title` / `--desc` 保持单行纯文本**——经 shell 传换行或特殊字符很脆弱(会被破坏)。需要长备注就写短、单行,别嵌 markdown/换行。

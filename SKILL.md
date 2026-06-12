@@ -53,7 +53,7 @@ Run `jovida help` to confirm it's available and see the current usage before rel
   → `{ "entry_id", "status": "created" }`. **One todo per call** — run it again for more.
 - `jovida update <entry_id> [--title <s>] [--when <ISO>] [--priority …] [--remind <ISO> …] [--category <s>] [--desc <s>] [--subtask "<title>" …] [--hint <s>]`
   → `{ "entry_id", "status": "updated" }`.
-- `jovida complete <entry_id>` → `{ "entry_id", "status": "completed" }`.
+- `jovida complete <entry_id> [<entry_id> ...]` → `{ "entry_ids", "status": "completed" }`.
 - `jovida delete <entry_id> [<entry_id> …]` → `{ "entry_ids": […], "status": "deleted" }`. Pass several ids in one call.
 
 Quote the title and any value containing spaces. **Keep `--title` / `--desc` to single-line plain text** — passing newlines or shell metacharacters as arguments is fragile (they get mangled). For a long note, keep it short and single-line rather than embedding markdown/newlines.

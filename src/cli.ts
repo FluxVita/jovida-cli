@@ -70,7 +70,7 @@ Usage:
                [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--limit N] [--json]
   jovida show <entry_id> [--json]
   jovida update <entry_id> [--title ...] [--when ...] [--priority ...] [--remind ...] [...]
-  jovida complete <entry_id> [--json]
+  jovida complete <entry_id> [<entry_id> ...] [--json]
   jovida delete <entry_id> [<entry_id> ...] [--json]
 
 Output: JSON is emitted automatically when stdout is not a TTY (use --json/--no-json to force).
@@ -161,7 +161,7 @@ async function main(): Promise<void> {
       })
       break
     case 'complete':
-      await cmdComplete(ctx, { id: positionals[0], json })
+      await cmdComplete(ctx, { ids: positionals, json })
       break
     case 'delete':
       await cmdDelete(ctx, { ids: positionals, json })
