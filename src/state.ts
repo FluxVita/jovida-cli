@@ -22,6 +22,8 @@ interface LocalState {
   deviceId?: string
   didStable?: boolean
   lastServerVersion?: number
+  updateCheckAt?: number // 上次查 npm 最新版的 Unix 秒(节流)
+  updateLatest?: string // 缓存的最新版本号
 }
 
 function ensureDir(): void {
@@ -60,6 +62,17 @@ export function getLastServerVersion(): number {
 export function setLastServerVersion(v: number): void {
   const s = loadState()
   s.lastServerVersion = v
+  saveState(s)
+}
+
+export function getUpdateCheck(): { at: number; latest: string } {
+  const s = loadState()
+  return { at: s.updateCheckAt ?? 0, latest: s.updateLatest ?? '' }
+}
+export function setUpdateCheck(at: number, latest: string): void {
+  const s = loadState()
+  s.updateCheckAt = at
+  s.updateLatest = latest
   saveState(s)
 }
 

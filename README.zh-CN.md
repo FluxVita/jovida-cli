@@ -26,10 +26,10 @@ npm i -g @fluxvita/jovida-cli
 **2. 安装 skill**,让 AI 知道何时/如何用 CLI:
 
 ```bash
-npx skills add FluxVita/jovida-cli
+jovida skill install
 ```
 
-把 `SKILL.md` 装进探测到的 agent(`~/.codex/skills/jovida-cli/`、`~/.claude/skills/jovida-cli/`……)。或把本仓库 URL 贴给 agent、让它自行安装。
+把随包的 `SKILL.md`(与 CLI 同版本)拷进探测到的 agent(`~/.codex/skills/jovida-cli/`、`~/.claude/skills/jovida-cli/`)。加 `--all` 可对所有已知 agent 安装(即使未探测到)。(备选:`npx skills add FluxVita/jovida-cli`。)
 
 **3. 登录 —— 这是用户的步骤(交互式;agent 做不了):**
 
@@ -41,9 +41,9 @@ jovida login          # 打开浏览器;登录并点「允许」授权该 CLI
 
 ## 更新
 
-- **npm 安装**(`@fluxvita/jovida-cli`):`npm i -g @fluxvita/jovida-cli@latest`。
-- **源码安装**(当前预发布):在克隆的仓库里运行 `git pull && npm install && npm run build`。`npm link` 的软链常驻,重新 build 即刻生效——无需重新 link。
-- **skill 单独更新:** 重跑 `npx skills add FluxVita/jovida-cli` 刷新 agent 里的 `SKILL.md`。CLI 命令有变化时记得做,让 agent 的认知保持同步。
+- **CLI**:`npm i -g @fluxvita/jovida-cli@latest`。(交互式终端里,CLI 还会在有新版时提示你。)
+- **skill**:更新完 CLI 后跑 `jovida skill update`——它重拷随包的 `SKILL.md`,让 agent 认知与已装 CLI 版本同步(同一 npm 包,不漂移)。
+- **源码**:在克隆的仓库里 `git pull && npm install && npm run build`(`npm link` 软链常驻),再 `jovida skill update`。
 
 ## 快速开始
 

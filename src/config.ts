@@ -15,7 +15,8 @@ export function loadConfig(): AppConfig {
   }
 }
 
-export const APP_VERSION = '0.0.1'
+// 单一版本来源:取 package.json,避免与 npm 版本双写漂移(dist/config.js 与 src/config.ts 都解析到包根)。
+export const APP_VERSION: string = require('../package.json').version
 
 /** process.platform → Vita-Platform 值。 */
 export function platformName(): string {

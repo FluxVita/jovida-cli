@@ -8,10 +8,14 @@ import { cmdComplete } from './commands/complete'
 import { cmdDelete } from './commands/delete'
 import { cmdLogin } from './commands/login'
 import { cmdWhoami } from './commands/whoami'
+import { cmdSkill } from './commands/skill'
 import { NotFoundError } from './commands/shared'
 import { NotSignedInError } from './session'
 import { ApiError } from './api'
 import { clearCredentials } from './state'
+import { maybeNotifyUpdate } from './lib/update-check'
+
+const VERSION: string = require('../package.json').version
 
 // 可重复的值 flag（收集成数组）。其余值 flag 取最后一次,无值则布尔 true。
 const REPEATABLE = new Set(['remind', 'subtask'])
@@ -62,6 +66,7 @@ Usage:
   jovida login --token <vita-token>    # dev-only interim: paste a signed-in vita token
   jovida logout
   jovida whoami [--json]
+  jovida skill install                 # copy the bundled skill into detected agents (Codex/Claude)
 
   jovida create "<title>" [--when <ISO>] [--priority none|low|medium|high]
                           [--remind <ISO> ...] [--category <s>] [--desc <s>]
@@ -77,7 +82,8 @@ Usage:
   jovida delete <entry_id> [<entry_id> ...] [--json]
 
 Output: JSON is emitted automatically when stdout is not a TTY (use --json/--no-json to force).
-Env:    JOVIDA_API_URL=<url> (default https://api.jovida.ai) · JOVIDA_HOME=<dir> (default ~/.jovida)
+Env:    JOVIDA_API_URL=<url> (default https://tapi.jovida.ai) · JOVIDA_HOME=<dir> (default ~/.jovida)
+        JOVIDA_NO_UPDATE_CHECK=1 to silence the "update available" notice
 `
 
 /** 错误 → 退出码(0 ok / 1 用法 / 2 未登录 / 3 后端 / 4 not found)。 */
@@ -103,7 +109,7 @@ async function main(): Promise<void> {
     return
   }
   if (cmd === 'version' || cmd === '--version' || cmd === '-v') {
-    console.log(require('../package.json').version)
+    console.log(VERSION)
     return
   }
 
@@ -122,6 +128,9 @@ async function main(): Promise<void> {
       break
     case 'whoami':
       await cmdWhoami(ctx, { json })
+      break
+    case 'skill':
+      cmdSkill(positionals[0], { all: flags.all === true, json })
       break
     case 'create':
       await cmdCreate(ctx, {
@@ -180,6 +189,8 @@ async function main(): Promise<void> {
       console.log(HELP)
       process.exitCode = 1
   }
+
+  await maybeNotifyUpdate(VERSION) // 节流 + 仅 TTY + 永不抛;放最后,不影响命令输出/退出码
 }
 
 main().catch((e) => {
