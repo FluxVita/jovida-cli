@@ -43,7 +43,7 @@ allowed-tools: Bash(jovida:*)
 
 你通过 shell 调用这些命令。**非交互运行时(你就是)输出是 stdout 上的 JSON**——解析它。错误走 **stderr**,形如 `{"error":{"code","message"}}`,并带**非零退出码**(`2`=未登录、`3`=后端/网络、`4`=条目不存在、`1`=用法)。可加 `--json` 强制 JSON。
 
-依赖某个参数前,先 `jovida help` 确认它可用、查看当前用法。
+依赖某个参数前,先 `jovida help` 确认可用,或 `jovida <命令> --help`(如 `jovida create --help`)查该命令的确切参数。
 
 **读**(了解现状,以及在 update/complete/delete 前拿到真实 `entry_id`):
 - `jovida list [--scope today|upcoming|recent|range|all] [--status pending|completed|all] [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--limit N]`

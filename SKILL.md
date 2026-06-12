@@ -41,7 +41,7 @@ A write changes the user's data immediately — and `delete` / `complete` can't 
 
 You invoke these through your shell. When run non-interactively (as you do), output is **JSON on stdout** — parse it. Errors go to **stderr** as `{"error":{"code","message"}}` with a **non-zero exit code** (`2` = not signed in, `3` = backend/network, `4` = entry not found, `1` = usage). You can pass `--json` to force JSON.
 
-Run `jovida help` to confirm it's available and see the current usage before relying on a flag.
+Run `jovida help` to confirm it's available, or `jovida <command> --help` (e.g. `jovida create --help`) for one command's exact flags, before relying on a flag.
 
 **Read** (understand state, and get the real `entry_id` before any update/complete/delete):
 - `jovida list [--scope today|upcoming|recent|range|all] [--status pending|completed|all] [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--limit N]`

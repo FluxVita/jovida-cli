@@ -84,7 +84,110 @@ Usage:
 Output: JSON is emitted automatically when stdout is not a TTY (use --json/--no-json to force).
 Env:    JOVIDA_API_URL=<url> (default https://tapi.jovida.ai) · JOVIDA_HOME=<dir> (default ~/.jovida)
         JOVIDA_NO_UPDATE_CHECK=1 to silence the "update available" notice
+
+Run \`jovida <command> --help\` for details on a command (e.g. jovida create --help).
 `
+
+// 子命令详细 help(`jovida <cmd> --help` / `jovida help <cmd>`)。
+const COMMAND_HELP: Record<string, string> = {
+  create: `jovida create — add a todo (or a recurring series)
+
+Usage:
+  jovida create "<title>" [options]
+
+Options:
+  --when <ISO>           date "2026-06-15" = that day · datetime "2026-06-15T18:00:00+08:00" = deadline
+  --priority <p>         none | low | medium | high
+  --category <s>         free-text label
+  --desc <s>             description (single line)
+  --remind <ISO> ...     reminder time(s), repeatable; must be at/before --when
+  --subtask "<t>" ...    subtask(s), repeatable
+  --hint <s>             short companion hint
+  --json
+
+Recurring (creates a series; requires --when as the first occurrence):
+  --repeat <unit>        day | week | month | year
+  --every <N>            interval, e.g. --repeat week --every 2 = biweekly
+  --weekdays <list>      weekly: mon,wed,fri (or 1..7)
+  --day-of-month <N>     monthly/yearly
+  --month-of-year <N>    yearly
+  --until <YYYY-MM-DD>   end date
+
+Examples:
+  jovida create "submit report" --when 2026-06-20T18:00:00+08:00 --priority high
+  jovida create "standup" --when 2026-06-15 --repeat week --weekdays mon,wed,fri
+`,
+  list: `jovida list — list todos (a scoped view, not a search)
+
+Usage:
+  jovida list [options]
+
+Options:
+  --scope <s>    today (default) | upcoming | recent | range | all
+  --status <s>   pending (default) | completed | all
+  --from <YYYY-MM-DD>  range start (with --scope range)
+  --to <YYYY-MM-DD>    range end
+  --limit <N>    max items (default 20)
+  --json
+
+Examples:
+  jovida list
+  jovida list --scope all --status all
+  jovida list --scope range --from 2026-06-01 --to 2026-06-30
+`,
+  show: `jovida show — full details of one todo
+
+Usage:
+  jovida show <entry_id> [--json]
+`,
+  update: `jovida update — change fields of an existing todo (only the given fields change)
+
+Usage:
+  jovida update <entry_id> [options]
+
+Options (same as create; --title renames):
+  --title <s>  --when <ISO>  --priority <p>  --category <s>  --desc <s>
+  --remind <ISO> ...   (replaces the reminder list)
+  --subtask "<t>" ...  (replaces the subtask list)
+  --hint <s>  --json
+
+Example:
+  jovida update cli_01H... --priority high --when 2026-06-21T09:00:00+08:00
+`,
+  complete: `jovida complete — mark one or more todos done
+
+Usage:
+  jovida complete <entry_id> [<entry_id> ...] [--json]
+`,
+  delete: `jovida delete — permanently remove one or more todos (no undo)
+
+Usage:
+  jovida delete <entry_id> [<entry_id> ...] [--json]
+`,
+  login: `jovida login — sign in (OAuth device authorization; opens a browser)
+
+Usage:
+  jovida login [--json]
+  jovida login --token <vita-token>   # dev-only interim: paste a signed-in vita token
+
+The CLI prints a URL + short code and (best-effort) opens your browser; sign in
+and approve there. It cannot sign in for you.
+`,
+  logout: `jovida logout — clear local credentials (~/.jovida)
+`,
+  whoami: `jovida whoami — show the signed-in account (online check)
+
+Usage:
+  jovida whoami [--json]
+`,
+  skill: `jovida skill — install/update the agent skill from the bundled SKILL.md
+
+Usage:
+  jovida skill install         # copy SKILL.md into detected agents (~/.codex, ~/.claude → skills/jovida-cli/)
+  jovida skill update          # same (re-copy; keeps the skill in lockstep with the CLI version)
+  jovida skill install --all   # install for all known agents even if not detected
+`
+}
 
 /** 错误 → 退出码(0 ok / 1 用法 / 2 未登录 / 3 后端 / 4 not found)。 */
 function exitCodeFor(e: unknown): number {
@@ -105,11 +208,17 @@ async function main(): Promise<void> {
   const { positionals, flags } = parse(rest)
 
   if (!cmd || cmd === 'help' || cmd === '--help' || cmd === '-h') {
-    console.log(HELP)
+    const topic = positionals[0] // `jovida help <command>`
+    console.log(topic && COMMAND_HELP[topic] ? COMMAND_HELP[topic] : HELP)
     return
   }
   if (cmd === 'version' || cmd === '--version' || cmd === '-v') {
     console.log(VERSION)
+    return
+  }
+  // `jovida <command> --help` / `-h` → that command's detailed help.
+  if (flags.help === true || rest.includes('--help') || rest.includes('-h')) {
+    console.log(COMMAND_HELP[cmd] ?? HELP)
     return
   }
 
