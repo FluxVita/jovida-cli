@@ -15,14 +15,13 @@ The **Jovida Daily CLI** — capture and manage your **Jovida Daily** todos from
 
 ## Setup
 
-**1. Install the `jovida` command** so it is on your `PATH`. Pre-release — build from source:
+**1. Install the `jovida` command** so it is on your `PATH`:
 
 ```bash
-git clone https://github.com/FluxVita/jovida-cli && cd jovida-cli
-npm install && npm run build && npm link
+npm i -g @fluxvita/jovida-cli
 ```
 
-(When published: `npm i -g @fluxvita/jovida-cli`.) Verify with `jovida --version`.
+(Or build from source: `git clone https://github.com/FluxVita/jovida-cli && cd jovida-cli && npm install && npm run build && npm link`.) Verify with `jovida --version`.
 
 **2. Install the skill** so your AI knows when/how to use the CLI:
 

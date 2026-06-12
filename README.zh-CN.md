@@ -15,14 +15,13 @@
 
 ## 安装
 
-**1. 安装 `jovida` 命令**,让它在 `PATH` 上。预发布——暂时从源码构建:
+**1. 安装 `jovida` 命令**,让它在 `PATH` 上:
 
 ```bash
-git clone https://github.com/FluxVita/jovida-cli && cd jovida-cli
-npm install && npm run build && npm link
+npm i -g @fluxvita/jovida-cli
 ```
 
-(发布后:`npm i -g @fluxvita/jovida-cli`。)用 `jovida --version` 验证。
+(或从源码构建:`git clone https://github.com/FluxVita/jovida-cli && cd jovida-cli && npm install && npm run build && npm link`。)用 `jovida --version` 验证。
 
 **2. 安装 skill**,让 AI 知道何时/如何用 CLI:
 
