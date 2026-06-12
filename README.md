@@ -40,6 +40,12 @@ jovida login          # opens a browser; sign in and approve the CLI
 
 Verify with `jovida whoami`. From here the CLI stays signed in (auto-renews) until the session is revoked.
 
+## Updating
+
+- **Installed from npm** (`@jovida/cli`): `npm i -g @jovida/cli@latest`.
+- **Installed from source** (current pre-release): in the cloned repo run `git pull && npm install && npm run build`. The `npm link` symlink persists, so the rebuilt CLI takes effect immediately — no need to re-link.
+- **The skill updates separately:** re-run `npx skills add FluxVita/jovida-cli` to refresh `SKILL.md` in your agents. Do this whenever the CLI's commands change, so the agent's knowledge stays in sync.
+
 ## Quickstart
 
 ```bash

@@ -40,6 +40,12 @@ jovida login          # 打开浏览器;登录并点「允许」授权该 CLI
 
 用 `jovida whoami` 验证。此后 CLI 保持登录态(自动续期),直到会话被吊销。
 
+## 更新
+
+- **npm 安装**(`@jovida/cli`):`npm i -g @jovida/cli@latest`。
+- **源码安装**(当前预发布):在克隆的仓库里运行 `git pull && npm install && npm run build`。`npm link` 的软链常驻,重新 build 即刻生效——无需重新 link。
+- **skill 单独更新:** 重跑 `npx skills add FluxVita/jovida-cli` 刷新 agent 里的 `SKILL.md`。CLI 命令有变化时记得做,让 agent 的认知保持同步。
+
 ## 快速开始
 
 ```bash
