@@ -1,5 +1,5 @@
 {
-  "name": "@jovida/cli",
+  "name": "@fluxvita/jovida-cli",
   "version": "0.0.1",
   "description": "Jovida Daily CLI — capture and manage your todos from the command line and AI agents",
   "license": "MIT",

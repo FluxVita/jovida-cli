@@ -22,7 +22,7 @@ git clone https://github.com/FluxVita/jovida-cli && cd jovida-cli
 npm install && npm run build && npm link
 ```
 
-(发布后:`npm i -g @jovida/cli`。)用 `jovida --version` 验证。
+(发布后:`npm i -g @fluxvita/jovida-cli`。)用 `jovida --version` 验证。
 
 **2. 安装 skill**,让 AI 知道何时/如何用 CLI:
 
@@ -42,7 +42,7 @@ jovida login          # 打开浏览器;登录并点「允许」授权该 CLI
 
 ## 更新
 
-- **npm 安装**(`@jovida/cli`):`npm i -g @jovida/cli@latest`。
+- **npm 安装**(`@fluxvita/jovida-cli`):`npm i -g @fluxvita/jovida-cli@latest`。
 - **源码安装**(当前预发布):在克隆的仓库里运行 `git pull && npm install && npm run build`。`npm link` 的软链常驻,重新 build 即刻生效——无需重新 link。
 - **skill 单独更新:** 重跑 `npx skills add FluxVita/jovida-cli` 刷新 agent 里的 `SKILL.md`。CLI 命令有变化时记得做,让 agent 的认知保持同步。
 

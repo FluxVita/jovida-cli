@@ -22,7 +22,7 @@ git clone https://github.com/FluxVita/jovida-cli && cd jovida-cli
 npm install && npm run build && npm link
 ```
 
-(When published: `npm i -g @jovida/cli`.) Verify with `jovida --version`.
+(When published: `npm i -g @fluxvita/jovida-cli`.) Verify with `jovida --version`.
 
 **2. Install the skill** so your AI knows when/how to use the CLI:
 
@@ -42,7 +42,7 @@ Verify with `jovida whoami`. From here the CLI stays signed in (auto-renews) unt
 
 ## Updating
 
-- **Installed from npm** (`@jovida/cli`): `npm i -g @jovida/cli@latest`.
+- **Installed from npm** (`@fluxvita/jovida-cli`): `npm i -g @fluxvita/jovida-cli@latest`.
 - **Installed from source** (current pre-release): in the cloned repo run `git pull && npm install && npm run build`. The `npm link` symlink persists, so the rebuilt CLI takes effect immediately — no need to re-link.
 - **The skill updates separately:** re-run `npx skills add FluxVita/jovida-cli` to refresh `SKILL.md` in your agents. Do this whenever the CLI's commands change, so the agent's knowledge stays in sync.
 
