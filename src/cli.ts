@@ -7,6 +7,7 @@ import { cmdUpdate } from './commands/update'
 import { cmdComplete } from './commands/complete'
 import { cmdDelete } from './commands/delete'
 import { cmdLogin } from './commands/login'
+import { cmdWhoami } from './commands/whoami'
 import { NotFoundError } from './commands/shared'
 import { NotSignedInError } from './session'
 import { ApiError } from './api'
@@ -57,7 +58,8 @@ const num = (v: string | string[] | boolean | undefined): number | undefined =>
 const HELP = `Jovida Daily CLI
 
 Usage:
-  jovida login [--token <signed-in-token>] [--json]   # required — no anonymous mode
+  jovida login [--json]                # device authorization: open the URL, enter the code, approve
+  jovida login --token <vita-token>    # dev-only interim: paste a signed-in vita token
   jovida logout
   jovida whoami [--json]
 
@@ -109,23 +111,15 @@ async function main(): Promise<void> {
 
   switch (cmd) {
     case 'login':
-      await cmdLogin(ctx, { apiKey: str(flags['api-key']), token: str(flags.token), json })
+      await cmdLogin(ctx, { token: str(flags.token), json })
       break
     case 'logout':
       clearCredentials()
       console.log(json ? JSON.stringify({ status: 'signed_out' }) : '✓ signed out')
       break
-    case 'whoami': {
-      const t = ctx.session.current()
-      console.log(
-        JSON.stringify(
-          { signedIn: t?.mode === 'MODE_SIGN', baseUrl: ctx.baseUrl, vitaId: t?.vitaId ?? null, mode: t?.mode ?? null },
-          null,
-          json ? 0 : 2
-        )
-      )
+    case 'whoami':
+      await cmdWhoami(ctx, { json })
       break
-    }
     case 'create':
       await cmdCreate(ctx, {
         title: positionals.join(' ').trim(),

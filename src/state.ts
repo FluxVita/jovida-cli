@@ -9,14 +9,13 @@ const DIR = process.env['JOVIDA_HOME'] ?? join(homedir(), '.jovida')
 const CRED = join(DIR, 'credentials.json')
 const STATE = join(DIR, 'state.json')
 
-/** passport token 记录(归一化形态)。 */
+/** Sign 态 vita token 记录（单 JWT：raw 内含 access/refresh 双窗，durs 用于推算续期时机）。 */
 export interface TokenRecord {
   raw: string
   vitaId: string
-  mode: string // MODE_ANONYMOUS | MODE_SIGN
-  accessDur: number
-  refreshDur: number
-  receivedAt: number // 落地 Unix 秒,推算过期
+  accessDur: number // access 有效期（秒）；0 = 未知（过渡 --token 流），不主动 refresh
+  refreshDur: number // refresh 有效期（秒）
+  receivedAt: number // 落地 Unix 秒
 }
 
 interface LocalState {
@@ -64,9 +63,8 @@ export function setLastServerVersion(v: number): void {
   saveState(s)
 }
 
-/** 凭证:apiKey = 长效自愈凭证;token = 短效 SIGN token(由 apiKey exchange / 过渡 paste 得来)。 */
+/** 凭证:仅一枚 Sign 态 vita token(设备授权流换得;过渡期可由 --token 直粘)。 */
 export interface Credentials {
-  apiKey?: string
   token?: TokenRecord
 }
 
@@ -86,15 +84,7 @@ export function setToken(rec: TokenRecord): void {
   c.token = rec
   writeCreds(c)
 }
-export function getApiKey(): string | null {
-  return readCreds()?.apiKey ?? null
-}
-export function setApiKey(key: string): void {
-  const c = readCreds() ?? {}
-  c.apiKey = key
-  writeCreds(c)
-}
-/** 退出:清 apiKey + token。 */
+/** 退出:清 token。 */
 export function clearCredentials(): void {
   try {
     rmSync(CRED)

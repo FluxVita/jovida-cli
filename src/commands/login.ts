@@ -1,38 +1,36 @@
-import { createInterface } from 'node:readline'
 import type { Ctx } from '../ctx'
+import type { DeviceAuth } from '../session'
 import type { TokenRecord } from '../state'
-
-function prompt(q: string): Promise<string> {
-  const rl = createInterface({ input: process.stdin, output: process.stderr })
-  return new Promise((resolve) => rl.question(q, (ans) => {
-    rl.close()
-    resolve(ans)
-  }))
-}
+import { tryOpenBrowser } from '../lib/open-url'
 
 export interface LoginArgs {
-  apiKey?: string // 最终流:web 出的 jvd_ key
-  token?: string // 过渡流:直接粘登录态 Vita-Token
+  token?: string // 过渡流（开发期）：直接粘 Sign 态 vita token
   json?: boolean
+}
+
+/** 设备流发起后，向用户展示 URL + 短码（并尽力开浏览器）。走 stderr，不污染 --json stdout。 */
+function present(d: DeviceAuth): void {
+  const opened = tryOpenBrowser(d.verificationUriComplete)
+  process.stderr.write('\nTo sign in, open this URL in a browser:\n')
+  process.stderr.write(`  ${d.verificationUri}\n`)
+  process.stderr.write('and enter the code:\n')
+  process.stderr.write(`  ${d.userCode}\n\n`)
+  if (opened) process.stderr.write('(opened your browser automatically)\n')
+  process.stderr.write('Waiting for approval…\n')
 }
 
 /**
  * 登录。
- * - 默认 = apikey 流:粘 web 出的 `jvd_` key → api_key_exchange 换 SIGN token(凭证自愈)。
- * - `--token` = 过渡流:直接粘一枚登录态 Vita-Token。
+ * - 默认 = 设备授权流：device_authorize → 展示 URL+短码 → 轮询 device_token → 落盘 Sign token。
+ * - `--token` = 过渡流（开发期）：直接粘一枚 Sign 态 vita token。
  */
 export async function cmdLogin(ctx: Ctx, a: LoginArgs): Promise<void> {
   let rec: TokenRecord
   if (a.token) {
     rec = await ctx.session.loginWithToken(a.token)
   } else {
-    let key = a.apiKey
-    if (!key) {
-      process.stderr.write('Open the key page in your browser, sign in, and generate a CLI key.\n')
-      key = await prompt('Paste your Jovida key (jvd_…): ')
-    }
-    rec = await ctx.session.loginWithApiKey(key)
+    rec = await ctx.session.loginWithDeviceFlow(present)
   }
-  if (a.json) console.log(JSON.stringify({ vitaId: rec.vitaId, mode: rec.mode, baseUrl: ctx.baseUrl }))
-  else console.log(`✓ signed in  vitaId=${rec.vitaId || '(unknown)'}  (${ctx.baseUrl})`)
+  if (a.json) console.log(JSON.stringify({ vitaId: rec.vitaId, baseUrl: ctx.baseUrl }))
+  else console.log(`\n✓ signed in  vitaId=${rec.vitaId || '(unknown)'}  (${ctx.baseUrl})`)
 }

@@ -9,7 +9,7 @@ allowed-tools: Bash(jovida:*)
 Help the user capture and manage their **Jovida Daily** todos by shelling out to the `jovida` command-line tool. Run `jovida` commands through your shell — the CLI is the interface to the user's account, and changes sync to their other Jovida devices.
 
 > **If the `jovida` command isn't found**, the Jovida Daily CLI isn't installed here — tell the user to install it (see the jovida-cli README); don't pretend you tracked anything.
-> **If a command exits with code `2` (`NOT_SIGNED_IN`)**, the CLI isn't logged in — tell the user to run `jovida login`. There is **no anonymous mode**; nothing works until they sign in. You can't sign in for them (it needs a key from the web).
+> **If a command exits with code `2` (`NOT_SIGNED_IN`)**, the CLI isn't logged in — tell the user to run `jovida login`. There is **no anonymous mode**; nothing works until they sign in. You can't sign in for them (it needs an interactive browser sign-in).
 
 ## Core mental model — read this first
 
@@ -58,7 +58,7 @@ Run `jovida help` to confirm it's available and see the current usage before rel
 
 Quote the title and any value containing spaces. **Keep `--title` / `--desc` to single-line plain text** — passing newlines or shell metacharacters as arguments is fragile (they get mangled). For a long note, keep it short and single-line rather than embedding markdown/newlines.
 
-**Never put a login key or token in a command** (it lands in shell history / process listings). Signing in is the user's step — see the not-signed-in note above.
+**Never put a token in a command** (it lands in shell history / process listings). Signing in is the user's step (interactive browser) — see the not-signed-in note above.
 
 ## Field conventions
 

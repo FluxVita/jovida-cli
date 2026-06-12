@@ -35,7 +35,7 @@ npm install && npm run build && npm link   # provides the `jovida` command
 ## Quickstart
 
 ```bash
-jovida login                      # required — paste the key from the web key page
+jovida login                      # required — sign in via your browser (device authorization)
 jovida create "submit the report by Friday 6pm" --when 2026-06-12T18:00:00+08:00
 jovida list
 jovida show <entry_id>
@@ -52,7 +52,7 @@ Run `jovida help` for usage, or see [`SKILL.md`](./SKILL.md) for flags & field c
 
 ## Auth
 
-`jovida login` takes a **CLI key** generated on the Jovida web key page. The CLI exchanges it for a session token and **auto-renews** (set-and-forget) — you only log in again if you revoke the key. The CLI has no anonymous mode.
+`jovida login` uses the **OAuth device authorization flow**: it shows a URL and a short code (and tries to open your browser); you sign in and approve the CLI there, and the CLI receives a session token. The token **auto-renews** (set-and-forget) until the session is revoked. No keys to copy, no anonymous mode.
 
 ## The skill
 

@@ -1,5 +1,6 @@
 // Jovida 后端 HTTP 客户端（node）。
-// body = proto3-JSON（camelCase）；鉴权走 Vita-* header；后端本地验签,无请求签名。
+// body = proto3-JSON（camelCase）；鉴权 = Sign 态 vita token 走 `Vita-Token` header。
+// 设备授权流的 device_authorize/device_token 是匿名端点（登录时尚无 token，不带 Vita-Token）。
 import { release } from 'node:os'
 import { APP_VERSION } from './config'
 
@@ -8,12 +9,6 @@ export interface ApiClientConfig {
   appId: string // Vita-Aid
   deviceId: string // Vita-Did
   platform: string // Vita-Platform
-}
-
-/** token 生命周期钩子,由 Session 注入；rawPost 不触发（避免刷新递归）。 */
-export interface AuthHooks {
-  beforeRequest?: () => Promise<void>
-  onUnauthorized?: () => Promise<boolean>
 }
 
 export class ApiError extends Error {
@@ -28,41 +23,19 @@ export class ApiError extends Error {
 }
 
 export class ApiClient {
-  private token = ''
-  private hooks: AuthHooks = {}
+  private token = '' // Sign 态 vita token（Vita-Token）
 
   constructor(private cfg: ApiClientConfig) {}
 
   setToken(token: string): void {
     this.token = token
   }
-  setAuthHooks(hooks: AuthHooks): void {
-    this.hooks = hooks
-  }
 
-  /** 鉴权端点（register/refresh）用：带当前 token,不触发刷新钩子。 */
-  async rawPost<T = unknown>(path: string, body: unknown = {}): Promise<T> {
+  async post<T = unknown>(path: string, body: unknown = {}): Promise<T> {
     return this.fetchJson<T>(path, 'POST', body)
   }
-  /** 业务端点用：请求前续期 + 401 刷新重试一次。 */
-  async post<T = unknown>(path: string, body: unknown = {}): Promise<T> {
-    return this.authed<T>(() => this.fetchJson<T>(path, 'POST', body))
-  }
   async get<T = unknown>(path: string): Promise<T> {
-    return this.authed<T>(() => this.fetchJson<T>(path, 'GET'))
-  }
-
-  private async authed<T>(send: () => Promise<T>): Promise<T> {
-    await this.hooks.beforeRequest?.()
-    try {
-      return await send()
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 401 && this.hooks.onUnauthorized) {
-        const retry = await this.hooks.onUnauthorized()
-        if (retry) return await send()
-      }
-      throw e
-    }
+    return this.fetchJson<T>(path, 'GET')
   }
 
   private headers(): Record<string, string> {
@@ -80,7 +53,6 @@ export class ApiClient {
       'Vita-UTC-Offset': String(utcOffsetSec),
       'Vita-Language': 'en'
     }
-    // 空 token 省略 Vita-Token 头（与匿名 register「纯 did、无 token」语义一致）。
     if (this.token) h['Vita-Token'] = this.token
     return h
   }

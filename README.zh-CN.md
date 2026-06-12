@@ -35,7 +35,7 @@ npm install && npm run build && npm link   # 提供 `jovida` 命令
 ## 快速开始
 
 ```bash
-jovida login                      # 必须 —— 粘贴 web 出 key 页生成的 key
+jovida login                      # 必须 —— 浏览器登录（设备授权流）
 jovida create "周五下午6点前交报告" --when 2026-06-12T18:00:00+08:00
 jovida list
 jovida show <entry_id>
@@ -52,7 +52,7 @@ jovida complete <entry_id>
 
 ## 鉴权
 
-`jovida login` 接收一枚在 Jovida web 出 key 页生成的 **CLI key**。CLI 用它换会话 token 并**自动续期**(set-and-forget)——除非你吊销 key,否则无需再登录。无匿名模式。
+`jovida login` 走 **OAuth 设备授权流**:显示一个 URL 和一个短码(并尽力打开你的浏览器);你在浏览器登录并点「允许」授权该 CLI,CLI 随即拿到会话 token。token **自动续期**(set-and-forget),除非会话被吊销。无需复制任何 key,也无匿名模式。
 
 ## skill
 

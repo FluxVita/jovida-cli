@@ -1,23 +1,50 @@
-// 鉴权 session。**正式 CLI 不支持匿名态**(后端 todo 端点强制登录,匿名→403 NEED_SIGN_IN;
-// 且 CLI storeless 无本地兜底)——必须先 `jovida login`。
+// 鉴权 session。**正式 CLI 不支持匿名态**——必须先 `jovida login`。
 //
-// 凭证两层:长效 `jvd_` apiKey + 短效 SIGN token。**自愈(set-and-forget)**:
-//   access 临过期 → refresh_token;refresh 也死(401) → 用存的 apiKey 再 exchange → 新 token;
-//   仅 apiKey 被吊销(exchange 401/403) → NotSignedIn,要求重新 login。
-// 最终登录 = 粘 web 出的 `jvd_` key → api_key_exchange。过渡期 `loginWithToken` 直接粘登录态 token。
+// 登录 = OAuth 设备授权流（RFC 8628 语义，vita 线格式）：
+//   device_authorize（匿名）拿 deviceCode(密)+userCode(短码) → 用户在浏览器登录批准
+//   → 轮询 device_token，reason=="" 即批准、返回 Sign 态 vita token → 落盘 token.raw。
+// 凭证 = 单枚 vita token（raw 内含 access/refresh 双窗）；access 临期用 refresh_token 续；
+// refresh 死 → NotSignedIn，重跑 login。**不走 apikey/Bearer。**
+// 过渡：`loginWithToken` 直粘一枚 Sign token（开发期，无 durs 故不自动 refresh）。
 import { ApiClient, ApiError } from './api'
-import { getToken, setToken, getApiKey, setApiKey, clearCredentials, type TokenRecord } from './state'
+import { getToken, setToken, clearCredentials, type TokenRecord } from './state'
 
-interface PassportResponse {
-  register?: { vitaId?: string }
-  token?: { raw?: string; accessDur?: number | string; refreshDur?: number | string; mode?: string | number }
+const AUTHORIZE = '/uc/v1/passport/device_authorize'
+const DEVICE_TOKEN = '/uc/v1/passport/device_token'
+const REFRESH = '/uc/v1/passport/refresh_token'
+const USER_INFO = '/uc/v1/user/get_user_info'
+const SKEW = 60
+
+const nowSec = (): number => Math.floor(Date.now() / 1000)
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
+
+/** device_authorize 响应（展示给用户的发起信息）。 */
+export interface DeviceAuth {
+  deviceCode: string // 机密：仅内存持有，绝不打印/落盘
+  userCode: string
+  verificationUri: string
+  verificationUriComplete: string
+  expiresIn: number
+  interval: number
 }
 
-const SKEW = 60
-const EXCHANGE = '/uc/v1/passport/api_key_exchange'
-const nowSec = (): number => Math.floor(Date.now() / 1000)
+export interface UserInfo {
+  vitaId: string
+  vitaHao: string
+  entitlement: string
+}
 
-/** 未登录 / 会话失效 / apiKey 被吊销。CLI 不回退匿名。 */
+interface PassportResponse {
+  reason?: string
+  register?: { vitaId?: string | number }
+  token?: { raw?: string; accessDur?: number | string; refreshDur?: number | string; mode?: string }
+}
+interface UserInfoResponse {
+  user?: { vitaId?: string | number; vitaHao?: string }
+  subscription?: { entitlement?: string }
+}
+
+/** 未登录 / 会话失效。CLI 不回退匿名。 */
 export class NotSignedInError extends Error {
   constructor(msg = 'Not signed in. Run `jovida login` first.') {
     super(msg)
@@ -29,92 +56,87 @@ export class Session {
   private refreshing: Promise<void> | null = null
 
   constructor(private api: ApiClient) {
-    api.setAuthHooks({
-      beforeRequest: async () => {
-        const t = getToken()
-        if (t && t.accessDur > 0 && nowSec() > t.receivedAt + t.accessDur - SKEW) await this.refresh()
-      },
-      onUnauthorized: async () => {
-        await this.refresh()
-        return true
-      }
-    })
     const t = getToken()
     if (t) api.setToken(t.raw)
   }
 
-  /** 业务命令前:确保有效登录态;无效则自愈(refresh→apiKey re-exchange),都不行 → NotSignedIn。 */
+  /** 业务命令前：无 token → NotSignedIn；access 临期 → 续期。 */
   async ensureSession(): Promise<void> {
     const t = getToken()
-    if (!t) {
-      const key = getApiKey()
-      if (key) return this.exchange(key)
-      throw new NotSignedInError()
-    }
-    if (t.refreshDur > 0 && nowSec() >= t.receivedAt + t.refreshDur - SKEW) return this.reauth()
+    if (!t) throw new NotSignedInError()
+    this.api.setToken(t.raw)
     if (t.accessDur > 0 && nowSec() > t.receivedAt + t.accessDur - SKEW) await this.refresh()
   }
 
-  /** token 全死:有 apiKey 则 re-exchange,否则清凭证 + NotSignedIn。 */
-  private async reauth(): Promise<void> {
-    const key = getApiKey()
-    if (key) return this.exchange(key)
-    clearCredentials()
-    throw new NotSignedInError('Session expired. Run `jovida login` again.')
-  }
+  // ── 设备授权流 ────────────────────────────────────────────────
 
-  /** 用 apiKey 换 SIGN token(api_key_exchange 返回与 register/oauth 同形)。 */
-  async exchange(apiKey: string): Promise<void> {
+  /** 第 1 步：发起。device endpoints 匿名（清掉可能的旧 token）。 */
+  async deviceAuthorize(): Promise<DeviceAuth> {
     this.api.setToken('')
-    let resp: PassportResponse
-    try {
-      resp = await this.api.rawPost<PassportResponse>(EXCHANGE, { apiKey })
-    } catch (e) {
-      if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
-        clearCredentials()
-        throw new NotSignedInError('API key was rejected (revoked?). Run `jovida login` again.')
+    return this.api.post<DeviceAuth>(AUTHORIZE, {})
+  }
+
+  /**
+   * 第 2 步：按 interval 轮询直到批准 / 拒绝 / 过期 / 超时。
+   * reason: ""=已批准(带 token)、AUTHORIZATION_PENDING=继续、SLOW_DOWN=加间隔、ACCESS_DENIED/EXPIRED_TOKEN=终止。
+   */
+  async pollForToken(d: DeviceAuth): Promise<TokenRecord> {
+    let interval = Math.max(1, d.interval || 5)
+    const deadline = nowSec() + (d.expiresIn || 600)
+    for (;;) {
+      if (nowSec() >= deadline) throw new Error('Login timed out before approval. Run `jovida login` again.')
+      await sleep(interval * 1000)
+      const resp = await this.api.post<PassportResponse>(DEVICE_TOKEN, { deviceCode: d.deviceCode })
+      if (resp.token?.raw) return this.applyToken(resp) // reason=="" 已批准
+      switch (resp.reason ?? '') {
+        case 'AUTHORIZATION_PENDING':
+        case '':
+          continue
+        case 'SLOW_DOWN':
+          interval += 5
+          continue
+        case 'ACCESS_DENIED':
+          throw new Error('Login was denied.')
+        case 'EXPIRED_TOKEN':
+          throw new Error('The login request expired. Run `jovida login` again.')
+        default:
+          throw new Error(`Unexpected device_token reason: ${resp.reason}`)
       }
-      throw e
     }
-    this.applyToken(resp)
-    setApiKey(apiKey)
   }
 
-  /** 最终登录:粘 web 出的 jvd_ apiKey。 */
-  async loginWithApiKey(apiKey: string): Promise<TokenRecord> {
-    const key = apiKey.trim()
-    if (!key) throw new Error('empty key')
-    await this.exchange(key)
-    const t = getToken()
-    if (!t) throw new Error('exchange returned no token')
-    return t
+  /** 设备流登录：authorize → present(展示 URL+短码 + 开浏览器) → 轮询落盘。 */
+  async loginWithDeviceFlow(present: (d: DeviceAuth) => void): Promise<TokenRecord> {
+    const d = await this.deviceAuthorize()
+    present(d)
+    return this.pollForToken(d)
   }
 
-  /** 过渡登录:直接粘一枚登录态 Vita-Token,refresh 归一化、校验 SIGN。 */
-  async loginWithToken(pastedToken: string): Promise<TokenRecord> {
-    const raw = pastedToken.trim()
+  // ── 过渡 / 续期 / 身份 ─────────────────────────────────────────
+
+  /** 过渡登录（开发期）：直粘 Sign 态 vita token，get_user_info 验活后落盘（durs=0，不自动 refresh）。 */
+  async loginWithToken(rawToken: string): Promise<TokenRecord> {
+    const raw = rawToken.trim()
     if (!raw) throw new Error('empty token')
-    setToken({ raw, vitaId: '', mode: '', accessDur: 0, refreshDur: 0, receivedAt: nowSec() })
     this.api.setToken(raw)
-    await this.refresh()
-    const t = getToken()
-    if (!t || t.mode !== 'MODE_SIGN') {
-      clearCredentials()
-      throw new Error('That token is not a signed-in account — the CLI requires a logged-in API key.')
-    }
-    return t
+    const info = await this.fetchUserInfo('That token is not a valid signed-in session.')
+    const rec: TokenRecord = { raw, vitaId: info.vitaId, accessDur: 0, refreshDur: 0, receivedAt: nowSec() }
+    setToken(rec)
+    return rec
   }
 
   async refresh(): Promise<void> {
     if (this.refreshing) return this.refreshing
     this.refreshing = (async () => {
       try {
-        const resp = await this.api.rawPost<PassportResponse>('/uc/v1/passport/refresh_token', {})
+        const resp = await this.api.post<PassportResponse>(REFRESH, {})
         this.applyToken(resp)
       } catch (e) {
-        if (e instanceof ApiError && e.status === 401) {
-          await this.reauth() // 死会话 → apiKey re-exchange 或 NotSignedIn(不回退匿名)
-        } else throw e
+        if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
+          clearCredentials()
+          throw new NotSignedInError('Session expired. Run `jovida login` again.')
+        }
+        throw e
       } finally {
         this.refreshing = null
       }
@@ -122,22 +144,42 @@ export class Session {
     return this.refreshing
   }
 
-  private applyToken(resp: PassportResponse): void {
+  /** 当前身份（在线查；无凭证 → NotSignedIn）。 */
+  async whoami(): Promise<UserInfo> {
+    await this.ensureSession()
+    return this.fetchUserInfo('Session is no longer valid.')
+  }
+
+  private async fetchUserInfo(rejectMsg: string): Promise<UserInfo> {
+    let resp: UserInfoResponse
+    try {
+      resp = await this.api.get<UserInfoResponse>(USER_INFO)
+    } catch (e) {
+      if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
+        clearCredentials()
+        throw new NotSignedInError(`${rejectMsg} Run \`jovida login\` again.`)
+      }
+      throw e
+    }
+    return {
+      vitaId: String(resp.user?.vitaId ?? ''),
+      vitaHao: resp.user?.vitaHao ?? '',
+      entitlement: resp.subscription?.entitlement ?? ''
+    }
+  }
+
+  private applyToken(resp: PassportResponse): TokenRecord {
     const tk = resp.token
     if (!tk?.raw) throw new Error('passport response missing token')
     const rec: TokenRecord = {
       raw: tk.raw,
-      vitaId: resp.register?.vitaId ?? getToken()?.vitaId ?? '',
-      mode: String(tk.mode ?? ''),
+      vitaId: String(resp.register?.vitaId ?? getToken()?.vitaId ?? ''),
       accessDur: Number(tk.accessDur ?? 0),
       refreshDur: Number(tk.refreshDur ?? 0),
       receivedAt: nowSec()
     }
     setToken(rec)
     this.api.setToken(rec.raw)
-  }
-
-  current(): TokenRecord | null {
-    return getToken()
+    return rec
   }
 }

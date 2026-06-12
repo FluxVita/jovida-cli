@@ -11,7 +11,7 @@ allowed-tools: Bash(jovida:*)
 通过 shell 调用 `jovida` 命令行工具,帮用户捕获和管理 **Jovida Daily** 待办。`jovida` 命令是操作用户账号的接口,改动会同步到用户的其他 Jovida 设备。
 
 > **若 `jovida` 命令不存在**,说明本机没装 Jovida Daily CLI——提醒用户安装(见 jovida-cli README);别假装记下了什么。
-> **若某命令以退出码 `2`(`NOT_SIGNED_IN`)结束**,说明 CLI 未登录——提醒用户运行 `jovida login`。**没有匿名模式**,不登录什么都做不了。你**无法**替用户登录(需要从 web 拿 key)。
+> **若某命令以退出码 `2`(`NOT_SIGNED_IN`)结束**,说明 CLI 未登录——提醒用户运行 `jovida login`。**没有匿名模式**,不登录什么都做不了。你**无法**替用户登录(需要在浏览器里交互登录)。
 
 ## 核心心智模型——先读这段
 
@@ -60,7 +60,7 @@ allowed-tools: Bash(jovida:*)
 
 标题及含空格的值要加引号。**`--title` / `--desc` 保持单行纯文本**——经 shell 传换行或特殊字符很脆弱(会被破坏)。需要长备注就写短、单行,别嵌 markdown/换行。
 
-**绝不要把登录 key 或 token 写进命令**(会进 shell history / 进程列表)。登录是用户的事——见上方未登录说明。
+**绝不要把 token 写进命令**(会进 shell history / 进程列表)。登录是用户的事(浏览器交互)——见上方未登录说明。
 
 ## 字段约定
 
