@@ -51,6 +51,7 @@ Run `jovida help` to confirm it's available and see the current usage before rel
 **Write** (immediate):
 - `jovida create "<title>" [--when <ISO>] [--priority none|low|medium|high] [--remind <ISO> …] [--category <s>] [--desc <s>] [--subtask "<title>" …] [--hint <s>]`
   → `{ "entry_id", "status": "created" }`. **One todo per call** — run it again for more.
+- **Recurring**: add `--repeat day|week|month|year` (with `--when` as the **first occurrence**) → creates a recurring series, returns `{ "recurring_id", "status": "created" }`. Tune with `--every N` (e.g. every 2 weeks), `--weekdays mon,wed,fri` (weekly), `--day-of-month N` (monthly/yearly), `--month-of-year N` (yearly), `--until YYYY-MM-DD` (end). Occurrences then show up in `list` like normal todos.
 - `jovida update <entry_id> [--title <s>] [--when <ISO>] [--priority …] [--remind <ISO> …] [--category <s>] [--desc <s>] [--subtask "<title>" …] [--hint <s>]`
   → `{ "entry_id", "status": "updated" }`.
 - `jovida complete <entry_id> [<entry_id> ...]` → `{ "entry_ids", "status": "completed" }`.

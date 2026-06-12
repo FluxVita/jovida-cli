@@ -66,6 +66,9 @@ Usage:
   jovida create "<title>" [--when <ISO>] [--priority none|low|medium|high]
                           [--remind <ISO> ...] [--category <s>] [--desc <s>]
                           [--subtask <title> ...] [--hint <s>] [--json]
+            recurring:    [--repeat day|week|month|year] [--every N] [--weekdays mon,wed,fri]
+                          [--day-of-month N] [--month-of-year N] [--until YYYY-MM-DD]
+                          (--repeat requires --when as the first occurrence)
   jovida list  [--scope today|upcoming|recent|range|all] [--status pending|completed|all]
                [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--limit N] [--json]
   jovida show <entry_id> [--json]
@@ -130,6 +133,12 @@ async function main(): Promise<void> {
         remind: arr(flags.remind),
         subtask: arr(flags.subtask),
         hint: str(flags.hint),
+        repeat: str(flags.repeat),
+        every: num(flags.every),
+        weekdays: str(flags.weekdays),
+        dayOfMonth: num(flags['day-of-month']),
+        monthOfYear: num(flags['month-of-year']),
+        until: str(flags.until),
         json
       })
       break

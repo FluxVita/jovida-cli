@@ -5,6 +5,7 @@ import { getLastServerVersion, setLastServerVersion } from './state'
 import {
   entryToProto,
   entryFromProto,
+  recurringToProto,
   recurringFromProto,
   type GetSnapshotResponse
 } from './core/proto'
@@ -79,6 +80,25 @@ export class SyncClient {
       } catch (e) {
         if (e instanceof ApiError && e.status === 409 && attempt < MAX_CONFLICT) {
           await this.pull() // 追平 lastServerVersion 后重试
+          continue
+        }
+        throw e
+      }
+    }
+  }
+
+  /** 增量 upsert 循环「类」(recurrings)。409 SYNC_CONFLICT → pull 追平 → 重试。 */
+  async putRecurrings(items: TodoRecurring[]): Promise<void> {
+    for (let attempt = 0; attempt <= MAX_CONFLICT; attempt++) {
+      try {
+        await this.api.post(PUT, {
+          dataset: { entries: [], recurrings: items.map(recurringToProto) },
+          baseServerVersion: String(getLastServerVersion())
+        })
+        return
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 409 && attempt < MAX_CONFLICT) {
+          await this.pull()
           continue
         }
         throw e

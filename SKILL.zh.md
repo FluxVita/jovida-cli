@@ -53,6 +53,7 @@ allowed-tools: Bash(jovida:*)
 **写**(立即生效):
 - `jovida create "<标题>" [--when <ISO>] [--priority none|low|medium|high] [--remind <ISO> …] [--category <s>] [--desc <s>] [--subtask "<标题>" …] [--hint <s>]`
   → `{ "entry_id", "status": "created" }`。**一次一条**——多条就多次运行。
+- **循环**:给 `create` 加 `--repeat day|week|month|year`(并用 `--when` 指定**首次发生**)→ 创建循环「类」,返回 `{ "recurring_id", "status": "created" }`。可调:`--every N`(如每 2 周)、`--weekdays mon,wed,fri`(周)、`--day-of-month N`(月/年)、`--month-of-year N`(年)、`--until YYYY-MM-DD`(结束)。发生项之后会像普通待办一样出现在 `list` 里。
 - `jovida update <entry_id> [--title <s>] [--when <ISO>] [--priority …] [--remind <ISO> …] [--category <s>] [--desc <s>] [--subtask "<标题>" …] [--hint <s>]`
   → `{ "entry_id", "status": "updated" }`。
 - `jovida complete <entry_id> [<entry_id> ...]` → `{ "entry_ids", "status": "completed" }`。

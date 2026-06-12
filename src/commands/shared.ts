@@ -1,5 +1,5 @@
-import { newEntryId } from '../core/ids'
-import type { TodoDraft, TodoEntry } from '../core/types'
+import { newEntryId, newRecurringId } from '../core/ids'
+import type { TodoDraft, TodoEntry, TodoRecurring } from '../core/types'
 import type { Ctx } from '../ctx'
 
 export const nowSec = (): number => Math.floor(Date.now() / 1000)
@@ -31,6 +31,26 @@ export function draftToEntry(d: TodoDraft): TodoEntry {
     createdAt: t,
     updatedAt: t,
     hint: d.hint ?? ''
+  }
+}
+
+/** 带 repeat 的 TodoDraft → 完整 TodoRecurring「类」（补 id/时间戳/默认值）。dueAt/belongAt = 首次发生(种子)。 */
+export function draftToRecurring(d: TodoDraft): TodoRecurring {
+  if (!d.repeat) throw new Error('internal: draftToRecurring requires a repeat rule')
+  const t = nowSec()
+  return {
+    recurringId: newRecurringId(),
+    title: d.title,
+    description: d.description ?? '',
+    category: d.category ?? '',
+    priority: d.priority ?? 'none',
+    dueAt: d.dueAt ?? 0,
+    belongAt: d.belongAt ?? 0,
+    subtasks: d.subtasks ?? [],
+    reminder: d.reminder ?? null,
+    repeat: d.repeat,
+    createdAt: t,
+    updatedAt: t
   }
 }
 
