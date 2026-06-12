@@ -4,38 +4,45 @@
 
 The **Jovida Daily CLI** — capture and manage your **Jovida Daily** todos from the terminal and from AI coding agents (Codex, Claude Code, …). It ships with an agent **skill** so your AI knows when and how to use it.
 
-> **Beta.** Jovida Daily is in private beta; the CLI requires a Jovida account (no anonymous mode). A public npm release is coming soon.
+> **If you are the AI agent setting this up:** do the steps in **[Setup](#setup)** in order. You **cannot** do step 3 (`jovida login`) — it needs an interactive browser sign-in, so hand that step to the user and wait. After setup, drive the CLI per **[`SKILL.md`](./SKILL.md)**; whenever a command exits with code `2` (`NOT_SIGNED_IN`), ask the user to run `jovida login` again.
+
+> **Beta.** Jovida Daily is in private beta; the CLI requires a Jovida account (no anonymous mode).
 
 ## Two parts
 
 - **`jovida` command** — talks to your Jovida account over HTTPS (login required), keeps **no local todo database**, and syncs with your other Jovida devices.
-- **`SKILL.md`** (name: `jovida-cli`) — a portable behavior guide that teaches your AI agent to drive the CLI on a **single track: writes apply immediately** (no proposal/confirmation step, no undo yet).
+- **`SKILL.md`** (name: `jovida-cli`) — a portable behavior guide that teaches your AI to drive the CLI on a **single track: writes apply immediately** (no proposal/confirmation step, no undo yet).
 
-## Install
+## Setup
 
-### 1. The skill (so your AI knows how to use the CLI)
+**1. Install the `jovida` command** so it is on your `PATH`. Pre-release — build from source:
+
+```bash
+git clone https://github.com/FluxVita/jovida-cli && cd jovida-cli
+npm install && npm run build && npm link
+```
+
+(When published: `npm i -g @jovida/cli`.) Verify with `jovida --version`.
+
+**2. Install the skill** so your AI knows when/how to use the CLI:
 
 ```bash
 npx skills add FluxVita/jovida-cli
 ```
 
-Installs `SKILL.md` into your detected agents (`~/.codex/skills/jovida-cli/`, `~/.claude/skills/jovida-cli/`, …). Or paste this repo's URL to your agent and ask it to add the skill.
+Installs `SKILL.md` into detected agents (`~/.codex/skills/jovida-cli/`, `~/.claude/skills/jovida-cli/`, …). Or paste this repo's URL to your agent and ask it to add the skill.
 
-### 2. The `jovida` CLI
-
-Pre-release — build from source for now:
+**3. Sign in — this is the user's step (interactive; the agent cannot do it):**
 
 ```bash
-git clone <repo> jovida-cli && cd jovida-cli
-npm install && npm run build && npm link   # provides the `jovida` command
+jovida login          # opens a browser; sign in and approve the CLI
 ```
 
-(When published: `npm i -g @jovida/cli`.)
+Verify with `jovida whoami`. From here the CLI stays signed in (auto-renews) until the session is revoked.
 
 ## Quickstart
 
 ```bash
-jovida login                      # required — sign in via your browser (device authorization)
 jovida create "submit the report by Friday 6pm" --when 2026-06-12T18:00:00+08:00
 jovida list
 jovida show <entry_id>
@@ -52,7 +59,7 @@ Run `jovida help` for usage, or see [`SKILL.md`](./SKILL.md) for flags & field c
 
 ## Auth
 
-`jovida login` uses the **OAuth device authorization flow**: it shows a URL and a short code (and tries to open your browser); you sign in and approve the CLI there, and the CLI receives a session token. The token **auto-renews** (set-and-forget) until the session is revoked. No keys to copy, no anonymous mode.
+`jovida login` uses the **OAuth device authorization flow**: it shows a URL and a short code (and tries to open your browser); you sign in and approve the CLI there, and the CLI receives a session token that **auto-renews** (set-and-forget) until the session is revoked. No keys to copy, no anonymous mode.
 
 ## The skill
 

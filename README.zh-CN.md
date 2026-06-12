@@ -4,7 +4,9 @@
 
 **Jovida Daily CLI**——在终端、以及在 AI 编码 agent(Codex、Claude Code……)里捕获和管理你的 **Jovida Daily** 待办。随仓附带一份 agent **skill**,让 AI 知道何时、如何使用它。
 
-> **内测中。** Jovida Daily 处于私有内测;CLI 需要 Jovida 账号(无匿名模式)。公开 npm 发布即将到来。
+> **如果你是正在安装它的 AI agent:** 按 **[安装](#安装)** 的顺序执行。第 3 步 `jovida login` 你**做不了**——它需要浏览器交互登录,请把这一步交给用户并等待。装好后按 **[`SKILL.md`](./SKILL.md)** 驱动 CLI;任何命令以退出码 `2`(`NOT_SIGNED_IN`)结束时,提醒用户重新 `jovida login`。
+
+> **内测中。** Jovida Daily 处于私有内测;CLI 需要 Jovida 账号(无匿名模式)。
 
 ## 两部分
 
@@ -13,7 +15,16 @@
 
 ## 安装
 
-### 1. skill(让 AI 知道怎么用 CLI)
+**1. 安装 `jovida` 命令**,让它在 `PATH` 上。预发布——暂时从源码构建:
+
+```bash
+git clone https://github.com/FluxVita/jovida-cli && cd jovida-cli
+npm install && npm run build && npm link
+```
+
+(发布后:`npm i -g @jovida/cli`。)用 `jovida --version` 验证。
+
+**2. 安装 skill**,让 AI 知道何时/如何用 CLI:
 
 ```bash
 npx skills add FluxVita/jovida-cli
@@ -21,21 +32,17 @@ npx skills add FluxVita/jovida-cli
 
 把 `SKILL.md` 装进探测到的 agent(`~/.codex/skills/jovida-cli/`、`~/.claude/skills/jovida-cli/`……)。或把本仓库 URL 贴给 agent、让它自行安装。
 
-### 2. `jovida` CLI
-
-预发布——暂时从源码构建:
+**3. 登录 —— 这是用户的步骤(交互式;agent 做不了):**
 
 ```bash
-git clone <repo> jovida-cli && cd jovida-cli
-npm install && npm run build && npm link   # 提供 `jovida` 命令
+jovida login          # 打开浏览器;登录并点「允许」授权该 CLI
 ```
 
-(发布后:`npm i -g @jovida/cli`。)
+用 `jovida whoami` 验证。此后 CLI 保持登录态(自动续期),直到会话被吊销。
 
 ## 快速开始
 
 ```bash
-jovida login                      # 必须 —— 浏览器登录（设备授权流）
 jovida create "周五下午6点前交报告" --when 2026-06-12T18:00:00+08:00
 jovida list
 jovida show <entry_id>
