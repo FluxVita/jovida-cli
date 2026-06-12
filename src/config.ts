@@ -5,7 +5,7 @@ export interface AppConfig {
   appId: string
 }
 
-const DEFAULT_BASE_URL = 'https://api.jovida.ai' // 生产(公开默认)
+const DEFAULT_BASE_URL = 'https://tapi.jovida.ai' // 生产(公开默认)
 const DEFAULT_APP_ID = '2012' // Vita-Aid:复用 Jovida TODO app_id(同 group → 同 vitaID)
 
 export function loadConfig(): AppConfig {
