@@ -6,7 +6,7 @@ import {
   type ChangesInput,
   type RepeatInput
 } from '../core/convert'
-import type { Priority, RepeatUnit, TodoEntry, TodoRecurring } from '../core/types'
+import type { Priority, Reminder, RepeatUnit, Subtask, TodoEntry, TodoRecurring } from '../core/types'
 import { occurrenceToEntry, parseOccurrenceId, seriesOccursOn, ymdFromSec } from '../core/recurrence'
 import type { Ctx } from '../ctx'
 import { nowSec, NotFoundError } from './shared'
@@ -30,7 +30,31 @@ export interface UpdateArgs {
   dayOfMonth?: number
   monthOfYear?: number
   until?: string
+  // 清空字段(unset 语义;`??` 合并只增不清,故需显式 clear)
+  clearWhen?: boolean
+  clearRemind?: boolean
+  clearCategory?: boolean
+  clearDesc?: boolean
+  clearSubtasks?: boolean
+  clearHint?: boolean
+  clearUntil?: boolean // 仅重复待办:移除结束日,恢复永不结束
   json?: boolean
+}
+
+/** 把内容字段就地清空(merge 之后套用)。clearWhen 连带清提醒——提醒须有时间锚。 */
+function applyContentClears(
+  o: { dueAt: number; belongAt: number; reminder: Reminder | null; category: string; description: string; subtasks: Subtask[] },
+  a: UpdateArgs
+): void {
+  if (a.clearWhen) {
+    o.dueAt = 0
+    o.belongAt = 0
+    o.reminder = null
+  }
+  if (a.clearRemind) o.reminder = null
+  if (a.clearCategory) o.category = ''
+  if (a.clearDesc) o.description = ''
+  if (a.clearSubtasks) o.subtasks = []
 }
 
 export async function cmdUpdate(ctx: Ctx, a: UpdateArgs): Promise<void> {
@@ -38,15 +62,27 @@ export async function cmdUpdate(ctx: Ctx, a: UpdateArgs): Promise<void> {
   if (a.priority && !PRIORITIES.includes(a.priority as Priority)) {
     throw new Error(`--priority must be one of: ${PRIORITIES.join(', ')}`)
   }
+  // set 与 clear 同名互斥。
+  const conflict = (setVal: unknown, clear: boolean | undefined, set: string, clr: string): void => {
+    if (setVal !== undefined && clear) throw new Error(`--${set} and --${clr} can't be combined`)
+  }
+  conflict(a.when, a.clearWhen, 'when', 'clear-when')
+  conflict(a.remind, a.clearRemind, 'remind', 'clear-remind')
+  conflict(a.category, a.clearCategory, 'category', 'clear-category')
+  conflict(a.desc, a.clearDesc, 'desc', 'clear-desc')
+  conflict(a.subtask, a.clearSubtasks, 'subtask', 'clear-subtasks')
+  conflict(a.hint, a.clearHint, 'hint', 'clear-hint')
+  conflict(a.until, a.clearUntil, 'until', 'clear-until')
 
-  // 重复规则的部分变更(传了任一相关 flag 才有)。
+  // 重复规则的部分变更(传了任一相关 flag 才有;clear-until 也算动了规则)。
   const repeatTouched =
     a.repeat !== undefined ||
     a.every !== undefined ||
     a.weekdays !== undefined ||
     a.dayOfMonth !== undefined ||
     a.monthOfYear !== undefined ||
-    a.until !== undefined
+    a.until !== undefined ||
+    a.clearUntil === true
   let repeatChanges: Partial<RepeatInput> | undefined
   if (repeatTouched) {
     let unit: RepeatUnit | undefined
@@ -106,6 +142,8 @@ export async function cmdUpdate(ctx: Ctx, a: UpdateArgs): Promise<void> {
       hint: d.hint ?? '',
       updatedAt: nowSec()
     }
+    applyContentClears(updated, a)
+    if (a.clearHint) updated.hint = ''
     await ctx.sync.putEntries([updated])
     if (a.json) console.log(JSON.stringify({ entry_id: updated.entryId, status: 'updated' }))
     else console.log(`✓ updated  ${updated.title}  (${updated.entryId})`)
@@ -147,6 +185,8 @@ export async function cmdUpdate(ctx: Ctx, a: UpdateArgs): Promise<void> {
       repeat: repeatChanges ? mergeRepeat(series.repeat, repeatChanges) : series.repeat,
       updatedAt: nowSec()
     }
+    applyContentClears(updated, a)
+    if (a.clearUntil) updated.repeat = { ...updated.repeat, endAt: 0 } // 恢复永不结束
     await ctx.sync.putRecurrings([updated])
     if (a.json) console.log(JSON.stringify({ recurring_id: updated.recurringId, status: 'updated' }))
     else console.log(`✓ updated (repeating)  ${updated.title}  (${updated.recurringId})`)
@@ -181,6 +221,8 @@ export async function cmdUpdate(ctx: Ctx, a: UpdateArgs): Promise<void> {
         hint: d.hint ?? '',
         updatedAt: nowSec()
       }
+      applyContentClears(forked, a)
+      if (a.clearHint) forked.hint = ''
       await ctx.sync.putEntries([forked])
       if (a.json) console.log(JSON.stringify({ entry_id: forked.entryId, status: 'updated' }))
       else console.log(`✓ updated (occurrence)  ${forked.title}  (${forked.entryId})`)

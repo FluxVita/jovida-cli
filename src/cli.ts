@@ -19,8 +19,23 @@ import { maybeNotifyUpdate } from './lib/update-check'
 
 const VERSION: string = require('../package.json').version
 
-// 可重复的值 flag（收集成数组）。其余值 flag 取最后一次,无值则布尔 true。
+// 可重复的值 flag（收集成数组）。其余值 flag 取最后一次。
 const REPEATABLE = new Set(['remind', 'subtask'])
+// 合法的无值(布尔)flag。其余 flag 缺值 = 用法错(防 `--remind`(漏值)被静默当 true→丢弃)。
+const BOOLEAN_FLAGS = new Set([
+  'json',
+  'no-json',
+  'full',
+  'all',
+  'help',
+  'clear-when',
+  'clear-remind',
+  'clear-category',
+  'clear-desc',
+  'clear-subtasks',
+  'clear-hint',
+  'clear-until'
+])
 
 interface Parsed {
   positionals: string[]
@@ -36,6 +51,8 @@ function parse(argv: string[]): Parsed {
       const key = a.slice(2)
       const next = argv[i + 1]
       if (next === undefined || next.startsWith('--')) {
+        // 无值:布尔 flag 置 true;值 flag 缺值则报错(不再静默丢弃)。
+        if (!BOOLEAN_FLAGS.has(key)) throw new Error(`--${key} needs a value`)
         flags[key] = true
       } else {
         i++
@@ -173,6 +190,12 @@ Options (same as create; --title renames):
   --subtask "<t>" ...  (replaces the subtask list)
   --hint <s>  --json
 
+Clear a field (unset it; passing a value only sets/replaces, never clears):
+  --clear-when      (also drops reminders — a reminder needs a time)
+  --clear-remind  --clear-category  --clear-desc  --clear-subtasks  --clear-hint
+  --clear-until     (repeating todo only: remove the end date / make it endless)
+  (a --clear-X can't be combined with the matching --X)
+
 For a repeating todo (recurring_id), you can also change its repeat rule:
   --repeat <unit>  --every <N>  --weekdays <list>  --day-of-month <N>  --month-of-year <N>  --until <YYYY-MM-DD>
   (only the parts you pass change; switching --repeat unit drops parts that no longer apply)
@@ -227,6 +250,9 @@ The CLI prints a URL + short code and (best-effort) opens your browser; sign in
 and approve there. It cannot sign in for you.
 `,
   logout: `jovida logout — clear local credentials (~/.jovida)
+
+Local only — it removes the stored token from this machine; it does not revoke the
+session server-side.
 `,
   whoami: `jovida whoami — show the signed-in account (online check)
 
@@ -347,6 +373,13 @@ async function main(): Promise<void> {
         dayOfMonth: num(flags['day-of-month']),
         monthOfYear: num(flags['month-of-year']),
         until: str(flags.until),
+        clearWhen: flags['clear-when'] === true,
+        clearRemind: flags['clear-remind'] === true,
+        clearCategory: flags['clear-category'] === true,
+        clearDesc: flags['clear-desc'] === true,
+        clearSubtasks: flags['clear-subtasks'] === true,
+        clearHint: flags['clear-hint'] === true,
+        clearUntil: flags['clear-until'] === true,
         json
       })
       break
