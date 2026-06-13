@@ -1,4 +1,4 @@
-import { toListItem, belongDateToSec } from '../core/convert'
+import { toListItem, toFullTodo, belongDateToSec } from '../core/convert'
 import type { TodoEntry } from '../core/types'
 import type { Ctx } from '../ctx'
 
@@ -32,6 +32,7 @@ export interface ListArgs {
   from?: string
   to?: string
   limit?: number
+  full?: boolean // JSON 输出带全字段(description/subtasks/remind_at…),省去 list→view 第二次 pull
   json?: boolean
 }
 
@@ -67,7 +68,8 @@ export async function cmdList(ctx: Ctx, a: ListArgs): Promise<void> {
   items = items.slice(0, a.limit ?? 20)
 
   if (a.json) {
-    console.log(JSON.stringify({ todos: items.map(toListItem) }, null, 2))
+    const todos = a.full ? items.map((e) => toFullTodo(e)) : items.map(toListItem)
+    console.log(JSON.stringify({ todos }, null, 2))
     return
   }
   if (!items.length) {

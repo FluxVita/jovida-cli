@@ -2,9 +2,10 @@
 import { makeCtx } from './ctx'
 import { cmdCreate } from './commands/create'
 import { cmdList } from './commands/list'
-import { cmdShow } from './commands/show'
+import { cmdView } from './commands/view'
 import { cmdUpdate } from './commands/update'
 import { cmdComplete } from './commands/complete'
+import { cmdReopen } from './commands/reopen'
 import { cmdDelete } from './commands/delete'
 import { cmdLogin } from './commands/login'
 import { cmdWhoami } from './commands/whoami'
@@ -75,13 +76,15 @@ Usage:
                           [--day-of-month N] [--month-of-year N] [--until YYYY-MM-DD]
                           (--repeat requires --when as the first occurrence)
   jovida list  [--scope today|upcoming|recent|range|all] [--status pending|completed|all]
-               [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--limit N] [--json]
-  jovida show <entry_id> [--json]
+               [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--limit N] [--full] [--json]
+  jovida view <entry_id> [--json]
   jovida update <entry_id> [--title ...] [--when ...] [--priority ...] [--remind ...] [...]
   jovida complete <entry_id> [<entry_id> ...] [--json]
+  jovida reopen <entry_id> [<entry_id> ...] [--json]
   jovida delete <entry_id> [<entry_id> ...] [--json]
 
 Output: JSON is emitted automatically when stdout is not a TTY (use --json/--no-json to force).
+Exit:   0 ok · 1 usage · 2 not signed in · 3 backend/network · 4 not found
 Env:    JOVIDA_API_URL=<url> (default https://tapi.jovida.ai) · JOVIDA_HOME=<dir> (default ~/.jovida)
         JOVIDA_NO_UPDATE_CHECK=1 to silence the "update available" notice
 
@@ -128,17 +131,19 @@ Options:
   --from <YYYY-MM-DD>  range start (with --scope range)
   --to <YYYY-MM-DD>    range end
   --limit <N>    max items (default 20)
+  --full         JSON: include all fields (description, subtasks, reminders) — one round-trip instead of list + view
   --json
 
 Examples:
   jovida list
   jovida list --scope all --status all
   jovida list --scope range --from 2026-06-01 --to 2026-06-30
+  jovida list --full          # full detail of each todo in one call
 `,
-  show: `jovida show — full details of one todo
+  view: `jovida view — full details of one todo
 
 Usage:
-  jovida show <entry_id> [--json]
+  jovida view <entry_id> [--json]
 `,
   update: `jovida update — change fields of an existing todo (only the given fields change)
 
@@ -158,6 +163,11 @@ Example:
 
 Usage:
   jovida complete <entry_id> [<entry_id> ...] [--json]
+`,
+  reopen: `jovida reopen — reopen one or more completed todos (the inverse of complete)
+
+Usage:
+  jovida reopen <entry_id> [<entry_id> ...] [--json]
 `,
   delete: `jovida delete — permanently remove one or more todos (no undo)
 
@@ -267,11 +277,12 @@ async function main(): Promise<void> {
         from: str(flags.from),
         to: str(flags.to),
         limit: num(flags.limit),
+        full: flags.full === true,
         json
       })
       break
-    case 'show':
-      await cmdShow(ctx, { id: positionals[0], json })
+    case 'view':
+      await cmdView(ctx, { id: positionals[0], json })
       break
     case 'update':
       await cmdUpdate(ctx, {
@@ -289,6 +300,9 @@ async function main(): Promise<void> {
       break
     case 'complete':
       await cmdComplete(ctx, { ids: positionals, json })
+      break
+    case 'reopen':
+      await cmdReopen(ctx, { ids: positionals, json })
       break
     case 'delete':
       await cmdDelete(ctx, { ids: positionals, json })

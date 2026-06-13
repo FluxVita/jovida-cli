@@ -50,7 +50,7 @@ Verify with `jovida whoami`. From here the CLI stays signed in (auto-renews) unt
 ```bash
 jovida create "submit the report by Friday 6pm" --when 2026-06-12T18:00:00+08:00
 jovida list
-jovida show <entry_id>
+jovida view <entry_id>
 jovida complete <entry_id>
 ```
 
@@ -59,7 +59,7 @@ jovida complete <entry_id>
 
 ## Commands
 
-`create` · `list` · `show` · `update` · `complete` · `delete` · `login` · `logout` · `whoami`.
+`create` · `list` · `view` · `update` · `complete` · `reopen` · `delete` · `login` · `logout` · `whoami`.
 Run `jovida help` for usage, or see [`SKILL.md`](./SKILL.md) for flags & field conventions.
 
 ## Auth

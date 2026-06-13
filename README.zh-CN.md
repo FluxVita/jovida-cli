@@ -50,7 +50,7 @@ jovida login          # 打开浏览器;登录并点「允许」授权该 CLI
 ```bash
 jovida create "周五下午6点前交报告" --when 2026-06-12T18:00:00+08:00
 jovida list
-jovida show <entry_id>
+jovida view <entry_id>
 jovida complete <entry_id>
 ```
 
@@ -59,7 +59,7 @@ jovida complete <entry_id>
 
 ## 命令
 
-`create` · `list` · `show` · `update` · `complete` · `delete` · `login` · `logout` · `whoami`。
+`create` · `list` · `view` · `update` · `complete` · `reopen` · `delete` · `login` · `logout` · `whoami`。
 `jovida help` 查看用法,或见 [`SKILL.md`](./SKILL.md) 了解参数与字段约定。
 
 ## 鉴权

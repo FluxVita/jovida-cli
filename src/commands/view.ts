@@ -2,8 +2,8 @@ import { toFullTodo } from '../core/convert'
 import type { Ctx } from '../ctx'
 import { fetchEntry } from './shared'
 
-export async function cmdShow(ctx: Ctx, a: { id: string; json?: boolean }): Promise<void> {
-  if (!a.id) throw new Error('entry_id required:  jovida show <entry_id>')
+export async function cmdView(ctx: Ctx, a: { id: string; json?: boolean }): Promise<void> {
+  if (!a.id) throw new Error('entry_id required:  jovida view <entry_id>')
   const e = await fetchEntry(ctx, a.id)
   const full = toFullTodo(e)
 
