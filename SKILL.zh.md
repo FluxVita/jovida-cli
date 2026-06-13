@@ -34,21 +34,21 @@ allowed-tools: Bash(jovida:*)
 
 - **待办的时间有两种粒度(同一个 `--when`)。** 纯**日期**(`2026-06-05`)= 归属*那天*、无硬截止;带时刻的 **datetime**(`2026-06-05T18:00:00+08:00`)= 精确**截止**。你确切知道哪个就给哪个。别把「周三做但周五截止」拆开——若周五截止,它就是周五的待办。
 - **提醒与时间分开,且提醒 ≠ 截止。** 提醒是*何时来提个醒*;每条须早于或等于待办的时间。「提醒我明天 X」= 明天的待办 + 明早一条提醒,**不**让 X 在那一刻截止。一条待办可带多个提醒。
-- **待办可以重复。** 给一条待办加重复规则,它就成为一条**重复待办**:`create` 返回它的 `recurring_id`(而非 `entry_id`)。用 `jovida view <recurring_id>` 看规则、`jovida update <recurring_id>` 改规则。**注意**:`list` 目前还不会展开重复待办的发生,所以重复待办不会作为按日期的条目出现在 `list` 里(已规划支持)。它用于真正的例行(「每个工作日站会」);几个互相独立的日期就建多条单独待办。
+- **待办可以重复。** 给一条待办加重复规则,它就成为一条**重复待办**:`create` 返回它的 `recurring_id`(而非 `entry_id`)。用 `jovida view <recurring_id>` 看规则、`jovida update <recurring_id>` 改规则。在 `list` 里,重复待办以它的**发生**呈现——即它在你查询窗口内落到的各个日期,每条带 `recurring_id` 标注。完成某次发生(`jovida complete <该发生 id>`)只勾掉那一天、例行继续(规则照常产生后续发生)。它用于真正的例行(「每个工作日站会」);几个互相独立的日期就建多条单独待办。
 - **其余:** **子任务**把一件事拆成步骤;**category** 是分组标签;**priority** 为 none/low/medium/high;**hint** 是可选的一句话提示——仅在确有帮助时加。
 
 ## 命令速览
 
 语义见下;确切参数跑 `jovida <命令> --help`。
 
-- **`jovida list`** —— 列出待办(默认今天的 pending)。用 scope/status/range 放宽,或用 **`--query <文本>`(标题+描述)、`--category`、`--priority` 搜索/过滤**(带任一过滤时 scope+status 默认放开到 *all*)。JSON 带 **`total` + `has_more`**——若 `has_more` 为真说明被 `--limit` 截断了,应调大 `--limit` 或收窄查询,**别据此断定某条待办不存在**。加 `--full` 可一次拿全字段(无需再 `view`)。
+- **`jovida list`** —— 列出待办(默认今天的 pending)。用 scope/status/range 放宽,或用 **`--query <文本>`(标题+描述)、`--category`、`--priority` 搜索/过滤**(带任一过滤时 scope+status 默认放开到 *all*)。JSON 带 **`total` + `has_more`**——若 `has_more` 为真说明被 `--limit` 截断了,应调大 `--limit` 或收窄查询,**别据此断定某条待办不存在**。加 `--full` 可一次拿全字段(无需再 `view`)。重复待办以带日期的**发生**呈现、带 `recurring_id` 标注:显式 `--scope range --from/--to` 列出该窗口内**每一次**发生;`today`/`upcoming` 只给每条例行的下一次发生。
 - **`jovida view <entry_id>`** —— 单条待办完整详情(description、subtasks、提醒……)。改传重复待办的 `recurring_id` 则回看它的重复规则。
 - **`jovida create "<标题>"`** —— 新建一条待办(**一次一条**;多条多次跑)。给它加重复规则则成为一条重复待办(返回 `recurring_id`)。
 - **`jovida update <entry_id>`** —— 改待办的字段;**只改你传的字段**。`--remind` / `--subtask` 整列替换(子任务会按标题保留同名项的完成状态;单条子任务用下面的 `subtask`)。传 `recurring_id` 则改重复待办——含其重复规则。
-- **`jovida complete <id> [<id> …]`** —— 标记完成(一次传多个 id)。
+- **`jovida complete <id> [<id> …]`** —— 标记完成(一次传多个 id)。也可传重复待办某次发生的 id(取自 `list`)只勾掉那一天——它会把该次发生材料化,例行继续运行。
 - **`jovida reopen <id> [<id> …]`** —— 重新打开已完成的待办(`complete` 的逆操作)。
 - **`jovida subtask check|uncheck|add|rm <entry_id> …`** —— 勾选/取消/新增/删除单条子任务(按 id 或 `view` 里的 1-based 序号寻址)。
-- **`jovida delete <id> [<id> …]`** —— 永久删除(一次传多个 id;**无撤回**)。
+- **`jovida delete <id> [<id> …]`** —— 永久删除(一次传多个 id;**无撤回**)。要停掉一条例行,删它的 `recurring_id`——不能删单次发生。
 - **`jovida whoami` / `login` / `logout`** —— 会话。`login` 是用户的交互步骤。
 
 ## Workflows——如何组合命令
@@ -60,7 +60,7 @@ allowed-tools: Bash(jovida:*)
 - **修改或改期:** 先 `jovida list`(或 `view`)拿 `entry_id`,再 `jovida update`。挪截止改 `--when`。记住 `--remind` / `--subtask` 是整列替换。
 - **勾掉某一步:** 先 `jovida view <id>` 看带序号的子任务,再 `jovida subtask check <id> <n>`(n 是序号,或子任务的 id)。
 - **完成或清理:** 先 `jovida list` 看有哪些开着,再 `jovida complete`(做完)或 `jovida delete`(移除)——相关 id 一次全传。除非该项压根不是真任务,否则优先 `complete` 而非 `delete`;若误标完成,`jovida reopen` 可撤回(而 `delete` 无法撤回)。
-- **例行(重复):** 给一条待办加重复规则,建一次即可。几个不规则日期则建多条单独待办。
+- **例行(重复):** 给一条待办加重复规则,建一次即可。之后它在 `list` 里按各发生日期呈现(带 `recurring_id` 标注);`complete` 某次发生即勾掉那一天。几个不规则日期则建多条单独待办。
 - **「我手头有啥?」** `jovida list`(今天,或放宽 scope),从 JSON 里汇总。只读——别写任何东西。
 
 ## 纪律

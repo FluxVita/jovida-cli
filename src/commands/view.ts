@@ -1,4 +1,5 @@
 import { toFullTodo, toSeriesTodo, repeatToOutput } from '../core/convert'
+import { occurrenceToEntry, parseOccurrenceId, seriesOccursOn, ymdFromSec } from '../core/recurrence'
 import type { Ctx } from '../ctx'
 import { NotFoundError } from './shared'
 
@@ -19,10 +20,13 @@ export async function cmdView(ctx: Ctx, a: { id: string; json?: boolean }): Prom
   await ctx.session.ensureSession()
   const snap = await ctx.sync.pull()
 
-  // 普通待办(含重复待办的某次发生)
+  // 普通待办(含已材料化的循环发生)。带 recurringId 的条目附带其重复规则。
   const entry = snap.entries.find((x) => x.entryId === a.id)
   if (entry) {
-    const full = toFullTodo(entry)
+    const repeat = entry.recurringId
+      ? snap.recurrings.find((s) => s.recurringId === entry.recurringId)?.repeat
+      : undefined
+    const full = toFullTodo(entry, repeat)
     if (a.json) {
       console.log(JSON.stringify(full, null, 2))
       return
@@ -40,6 +44,33 @@ export async function cmdView(ctx: Ctx, a: { id: string; json?: boolean }): Prom
     ].filter(Boolean)
     console.log(lines.join('\n'))
     return
+  }
+
+  // 尚未材料化的循环发生(list 展开出的虚拟项 id):合成发生视图并附带规则。
+  const occ = parseOccurrenceId(a.id)
+  if (occ) {
+    const s = snap.recurrings.find((x) => x.recurringId === occ.recurringId)
+    const day = ymdFromSec(occ.occurrenceSec)
+    if (s && seriesOccursOn(s, day)) {
+      const full = toFullTodo(occurrenceToEntry(s, day), s.repeat)
+      if (a.json) {
+        console.log(JSON.stringify(full, null, 2))
+        return
+      }
+      const lines = [
+        `[ ] ${s.title}  🔁`,
+        `    id        ${full.entry_id}`,
+        full.when ? `    when      ${full.when}` : '',
+        `    repeat    ${fmtRepeat(repeatToOutput(s.repeat))}`,
+        `    priority  ${s.priority}`,
+        s.category ? `    list      ${s.category}` : '',
+        s.description ? `    note      ${s.description}` : '',
+        full.remind_at ? `    remind    ${(full.remind_at as string[]).join(', ')}` : '',
+        s.subtasks.length ? `    subtasks  ${s.subtasks.map((st, i) => `${i + 1}.· ${st.title}`).join('  ')}` : ''
+      ].filter(Boolean)
+      console.log(lines.join('\n'))
+      return
+    }
   }
 
   // 重复待办:用 recurring_id 回看其重复规则(规则本身即完整排程)

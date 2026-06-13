@@ -32,21 +32,21 @@ These shape *what you put in a command* — internalize them; flag spelling live
 
 - **A todo's time has two granularities (one `--when`).** A bare **date** (`2026-06-05`) means it *belongs to that day*, no hard deadline; a **datetime** (`2026-06-05T18:00:00+08:00`) is a precise **deadline**. Give whichever you actually know. Don't split "do it Wed, due Fri" — if it's due Friday, it's a Friday todo.
 - **Reminders are separate from the time, and a reminder ≠ a deadline.** A reminder is *when to nudge*; each must be at or before the todo's time. "Remind me about X tomorrow" = a todo tomorrow with a reminder tomorrow morning — it does **not** make X *due* at that moment. A todo can carry several reminders.
-- **A todo can repeat.** Give a todo a repeat rule and it becomes a **repeating todo**: `create` returns a `recurring_id` (not an `entry_id`). View its rule with `jovida view <recurring_id>` and change it with `jovida update <recurring_id>`. **Note:** `list` does not yet expand a repeating todo's occurrences, so a repeating todo won't show up as dated entries there (support is planned). Use it for a real routine ("standup every weekday"); for a few separate dates, make individual todos.
+- **A todo can repeat.** Give a todo a repeat rule and it becomes a **repeating todo**: `create` returns a `recurring_id` (not an `entry_id`). View/change its rule with `jovida view <recurring_id>` / `jovida update <recurring_id>`. In `list`, a repeating todo shows up as its **occurrences** — the individual dates it falls on within the window you query, each flagged with `recurring_id`. Completing one occurrence (`jovida complete <its id>`) ticks off just that date and leaves the routine running; the rule keeps generating future occurrences. Use a repeat rule for a real routine ("standup every weekday"); for a few separate dates, make individual todos.
 - **The rest:** **subtasks** break one task into steps; **category** is a grouping label; **priority** is none/low/medium/high; **hint** is an optional one-line nudge — add it only when it genuinely helps.
 
 ## Commands at a glance
 
 Semantics below; exact flags via `jovida <cmd> --help`.
 
-- **`jovida list`** — list todos (defaults to today's pending). Widen with scope/status/range, or **search/filter** with `--query <text>` (title+description), `--category`, `--priority` (any of these defaults scope+status to *all*). The JSON carries **`total` + `has_more`** — if `has_more` is true the result was cut by `--limit`, so raise `--limit` or narrow the query rather than concluding a todo doesn't exist. Add `--full` for every field in one call (no follow-up `view`).
+- **`jovida list`** — list todos (defaults to today's pending). Widen with scope/status/range, or **search/filter** with `--query <text>` (title+description), `--category`, `--priority` (any of these defaults scope+status to *all*). The JSON carries **`total` + `has_more`** — if `has_more` is true the result was cut by `--limit`, so raise `--limit` or narrow the query rather than concluding a todo doesn't exist. Add `--full` for every field in one call (no follow-up `view`). Repeating todos appear as dated **occurrences** flagged with `recurring_id`: an explicit `--scope range --from/--to` lists *every* occurrence in that window; `today`/`upcoming` show each routine's next occurrence.
 - **`jovida view <entry_id>`** — full detail of one todo (description, subtasks, reminders, …). Pass a repeating todo's `recurring_id` instead to see its repeat rule.
 - **`jovida create "<title>"`** — add one todo (**one per call**; run again for more). Give it a repeat rule to make it a repeating todo instead (returns a `recurring_id`).
 - **`jovida update <entry_id>`** — change fields of a todo; **only the fields you pass change**. `--remind` / `--subtask` replace the whole list (subtasks keep the completion of same-titled ones; for individual subtasks use `subtask` below). Pass a `recurring_id` to edit a repeating todo instead — including its repeat rule.
-- **`jovida complete <id> [<id> …]`** — mark done (pass several ids in one call).
+- **`jovida complete <id> [<id> …]`** — mark done (pass several ids in one call). Pass a repeating todo's occurrence id (from `list`) to tick off just that date — it materializes that occurrence, the routine keeps running.
 - **`jovida reopen <id> [<id> …]`** — reopen completed todos (the inverse of `complete`).
 - **`jovida subtask check|uncheck|add|rm <entry_id> …`** — check / uncheck / add / remove an individual subtask (address it by its id or its 1-based number from `view`).
-- **`jovida delete <id> [<id> …]`** — permanently remove (several ids in one call; **no undo**).
+- **`jovida delete <id> [<id> …]`** — permanently remove (several ids in one call; **no undo**). To stop a routine, delete its `recurring_id` — you can't delete a single occurrence.
 - **`jovida whoami` / `login` / `logout`** — session. `login` is the user's interactive step.
 
 ## Workflows — composing the commands
@@ -58,7 +58,7 @@ Map the user's intent to a sequence; read before any change.
 - **Change or reschedule:** `jovida list` (or `view`) to get the `entry_id`, then `jovida update`. To move a deadline, update `--when`. Remember `--remind` / `--subtask` replace the list.
 - **Tick off a step:** `jovida view <id>` to see the numbered subtasks, then `jovida subtask check <id> <n>` (n is the number, or the subtask's id).
 - **Finish or clean up:** `jovida list` to see what's open, then `jovida complete` (done) or `jovida delete` (remove) — pass all related ids in one call. Prefer `complete` over `delete` unless the item was never real; if you marked one done by mistake, `jovida reopen` undoes it (a `delete` cannot be undone).
-- **A recurring routine:** create one todo with a repeat rule. For a few irregular dates, create individual todos instead.
+- **A recurring routine:** create one todo with a repeat rule. It then shows in `list` as occurrences on each due date (flagged `recurring_id`); `complete` an occurrence to tick off that day. For a few irregular dates, create individual todos instead.
 - **"What's on my plate?"** `jovida list` (today, or widen the scope) and summarize from the JSON. Read-only — don't write anything.
 
 ## Discipline

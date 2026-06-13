@@ -1,10 +1,13 @@
 import { toListItem, toFullTodo, belongDateToSec } from '../core/convert'
-import type { Priority, TodoEntry } from '../core/types'
+import { expandRecurring } from '../core/recurrence'
+import type { Priority, TodoEntry, TodoRecurring } from '../core/types'
 import type { Ctx } from '../ctx'
 
 const PRIORITIES: Priority[] = ['none', 'low', 'medium', 'high']
 
 const DAY = 86400
+const HORIZON_DAYS = 90 // range 无上界 / upcoming 折叠的展望窗
+const COLLAPSE_HORIZON_DAYS = 366 * 5 // 折叠模式找「下一次发生」最远扫描(足够覆盖年度规则)
 function startOfTodaySec(): number {
   const d = new Date()
   d.setHours(0, 0, 0, 0)
@@ -24,8 +27,9 @@ function fmtLine(e: TodoEntry): string {
   const box = e.completedAt > 0 ? '[x]' : '[ ]'
   const when = fmtWhen(e)
   const bell = e.reminder && e.reminder.offsetSecs.length ? ' 🔔' : ''
+  const repeat = e.recurringId ? ' 🔁' : ''
   const pr = e.priority !== 'none' ? `  !${e.priority}` : ''
-  return `${box} ${e.title}${when ? `  · ${when}` : ''}${bell}${pr}  (${e.entryId})`
+  return `${box} ${e.title}${when ? `  · ${when}` : ''}${bell}${repeat}${pr}  (${e.entryId})`
 }
 
 export interface ListArgs {
@@ -53,7 +57,25 @@ export async function cmdList(ctx: Ctx, a: ListArgs): Promise<void> {
 
   await ctx.session.ensureSession()
   const snap = await ctx.sync.pull()
-  let items = snap.entries
+
+  // 重复待办本地展开:把窗口内的「发生」合成虚拟项混入(后端 sync 不展开发生)。
+  const todayStart = startOfTodaySec()
+  const tomorrowStart = todayStart + DAY
+  const rangeFrom = a.from ? belongDateToSec(a.from) : todayStart
+  const rangeTo = a.to ? belongDateToSec(a.to) + DAY - 1 : Number.POSITIVE_INFINITY
+  const virtuals = expandRecurring({
+    recurrings: snap.recurrings,
+    realEntries: snap.entries,
+    scope,
+    status,
+    todayStart,
+    tomorrowStart,
+    rangeFrom,
+    rangeTo,
+    horizonDays: HORIZON_DAYS,
+    collapseHorizonDays: COLLAPSE_HORIZON_DAYS
+  })
+  let items = [...snap.entries, ...virtuals]
 
   // status 过滤
   items = items.filter((e) =>
@@ -61,8 +83,6 @@ export async function cmdList(ctx: Ctx, a: ListArgs): Promise<void> {
   )
 
   // scope 过滤（客户端,后端无 scoped 查询）
-  const todayStart = startOfTodaySec()
-  const tomorrowStart = todayStart + DAY
   if (scope === 'today') {
     items = items.filter((e) => anchorSec(e) > 0 && anchorSec(e) < tomorrowStart) // 今天及更早(含逾期)
   } else if (scope === 'upcoming') {
@@ -90,7 +110,13 @@ export async function cmdList(ctx: Ctx, a: ListArgs): Promise<void> {
   const hasMore = total > shown.length
 
   if (a.json) {
-    const todos = a.full ? shown.map((e) => toFullTodo(e)) : shown.map(toListItem)
+    let todos: Record<string, unknown>[]
+    if (a.full) {
+      const seriesById = new Map<string, TodoRecurring>(snap.recurrings.map((s) => [s.recurringId, s]))
+      todos = shown.map((e) => toFullTodo(e, e.recurringId ? seriesById.get(e.recurringId)?.repeat : undefined))
+    } else {
+      todos = shown.map(toListItem)
+    }
     console.log(JSON.stringify({ todos, total, has_more: hasMore }, null, 2))
     return
   }

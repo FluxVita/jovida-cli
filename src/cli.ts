@@ -144,6 +144,9 @@ Options:
 Output carries "total" and "has_more" so you can tell when results were truncated by --limit.
 When --query/--category/--priority is given, scope and status default to "all" (search spans everything).
 
+Repeating todos appear as dated occurrences flagged with "recurring_id":
+  --scope range --from/--to lists every occurrence in the window; today/upcoming show each routine's next one.
+
 Examples:
   jovida list
   jovida list --query dentist                 # find todos mentioning "dentist"
@@ -151,12 +154,13 @@ Examples:
   jovida list --scope range --from 2026-06-01 --to 2026-06-30
   jovida list --full          # full detail of each todo in one call
 `,
-  view: `jovida view — full details of one todo, or of a repeating todo
+  view: `jovida view — full details of one todo, a repeating todo, or one occurrence
 
 Usage:
-  jovida view <entry_id|recurring_id> [--json]
+  jovida view <entry_id | recurring_id | occurrence_id> [--json]
 
 Given a repeating todo's recurring_id, shows its repeat rule.
+Given an occurrence id (from list, "recurring:…"), shows that occurrence with its rule.
 `,
   update: `jovida update — change fields of a todo, or of a repeating todo (only the given fields change)
 
@@ -182,6 +186,9 @@ Examples:
 
 Usage:
   jovida complete <entry_id> [<entry_id> ...] [--json]
+
+An id may be a repeating todo's occurrence id (from list, "recurring:…"): completing it
+ticks off just that date (materializes the occurrence); the routine keeps running.
 `,
   reopen: `jovida reopen — reopen one or more completed todos (the inverse of complete)
 
@@ -202,6 +209,8 @@ Address a subtask by its id (sub_…) or its 1-based number from \`jovida view <
 
 Usage:
   jovida delete <entry_id> [<entry_id> ...] [--json]
+
+To stop a repeating todo, delete its recurring_id. A single occurrence cannot be deleted.
 `,
   login: `jovida login — sign in (OAuth device authorization; opens a browser)
 
