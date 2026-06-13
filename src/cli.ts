@@ -72,13 +72,14 @@ Usage:
   jovida create "<title>" [--when <ISO>] [--priority none|low|medium|high]
                           [--remind <ISO> ...] [--category <s>] [--desc <s>]
                           [--subtask <title> ...] [--hint <s>] [--json]
-            recurring:    [--repeat day|week|month|year] [--every N] [--weekdays mon,wed,fri]
+            repeating:    [--repeat day|week|month|year] [--every N] [--weekdays mon,wed,fri]
                           [--day-of-month N] [--month-of-year N] [--until YYYY-MM-DD]
-                          (--repeat requires --when as the first occurrence)
+                          (--repeat needs --when as the first date)
   jovida list  [--scope today|upcoming|recent|range|all] [--status pending|completed|all]
                [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--limit N] [--full] [--json]
-  jovida view <entry_id> [--json]
-  jovida update <entry_id> [--title ...] [--when ...] [--priority ...] [--remind ...] [...]
+  jovida view <entry_id|recurring_id> [--json]
+  jovida update <entry_id|recurring_id> [--title ...] [--when ...] [--remind ...] [...]
+                          (recurring_id: also --repeat/--every/--weekdays/--until to change the repeat rule)
   jovida complete <entry_id> [<entry_id> ...] [--json]
   jovida reopen <entry_id> [<entry_id> ...] [--json]
   jovida delete <entry_id> [<entry_id> ...] [--json]
@@ -93,7 +94,7 @@ Run \`jovida <command> --help\` for details on a command (e.g. jovida create --h
 
 // 子命令详细 help(`jovida <cmd> --help` / `jovida help <cmd>`)。
 const COMMAND_HELP: Record<string, string> = {
-  create: `jovida create — add a todo (or a recurring series)
+  create: `jovida create — add a todo (or a repeating todo)
 
 Usage:
   jovida create "<title>" [options]
@@ -108,7 +109,7 @@ Options:
   --hint <s>             short companion hint
   --json
 
-Recurring (creates a series; requires --when as the first occurrence):
+Repeating (makes it a repeating todo; needs --when as the first date):
   --repeat <unit>        day | week | month | year
   --every <N>            interval, e.g. --repeat week --every 2 = biweekly
   --weekdays <list>      weekly: mon,wed,fri (or 1..7)
@@ -140,15 +141,17 @@ Examples:
   jovida list --scope range --from 2026-06-01 --to 2026-06-30
   jovida list --full          # full detail of each todo in one call
 `,
-  view: `jovida view — full details of one todo
+  view: `jovida view — full details of one todo, or of a repeating todo
 
 Usage:
-  jovida view <entry_id> [--json]
+  jovida view <entry_id|recurring_id> [--json]
+
+Given a repeating todo's recurring_id, shows its repeat rule.
 `,
-  update: `jovida update — change fields of an existing todo (only the given fields change)
+  update: `jovida update — change fields of a todo, or of a repeating todo (only the given fields change)
 
 Usage:
-  jovida update <entry_id> [options]
+  jovida update <entry_id|recurring_id> [options]
 
 Options (same as create; --title renames):
   --title <s>  --when <ISO>  --priority <p>  --category <s>  --desc <s>
@@ -156,8 +159,14 @@ Options (same as create; --title renames):
   --subtask "<t>" ...  (replaces the subtask list)
   --hint <s>  --json
 
-Example:
+For a repeating todo (recurring_id), you can also change its repeat rule:
+  --repeat <unit>  --every <N>  --weekdays <list>  --day-of-month <N>  --month-of-year <N>  --until <YYYY-MM-DD>
+  (only the parts you pass change; switching --repeat unit drops parts that no longer apply)
+
+Examples:
   jovida update cli_01H... --priority high --when 2026-06-21T09:00:00+08:00
+  jovida update series_01H... --weekdays mon,fri      # change which weekdays it repeats
+  jovida update series_01H... --until 2026-12-31      # set an end date
 `,
   complete: `jovida complete — mark one or more todos done
 
@@ -295,6 +304,12 @@ async function main(): Promise<void> {
         remind: arr(flags.remind),
         subtask: arr(flags.subtask),
         hint: str(flags.hint),
+        repeat: str(flags.repeat),
+        every: num(flags.every),
+        weekdays: str(flags.weekdays),
+        dayOfMonth: num(flags['day-of-month']),
+        monthOfYear: num(flags['month-of-year']),
+        until: str(flags.until),
         json
       })
       break

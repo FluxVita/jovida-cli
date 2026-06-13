@@ -1,34 +1,9 @@
-import { toDraft, type DraftInput, type RepeatInput } from '../core/convert'
-import type { Priority, RepeatUnit } from '../core/types'
+import { toDraft, normalizeRepeatUnit, parseWeekdays, type DraftInput, type RepeatInput } from '../core/convert'
+import type { Priority } from '../core/types'
 import type { Ctx } from '../ctx'
 import { draftToEntry, draftToRecurring } from './shared'
 
 const PRIORITIES: Priority[] = ['none', 'low', 'medium', 'high']
-
-// --repeat 取值(含别名)→ 存储 unit。
-const UNIT_ALIAS: Record<string, RepeatUnit> = {
-  day: 'day',
-  daily: 'day',
-  week: 'week',
-  weekly: 'week',
-  month: 'month',
-  monthly: 'month',
-  year: 'year',
-  yearly: 'year'
-}
-const WEEKDAY_ALIAS: Record<string, number> = { mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6, sun: 7 }
-
-/** "mon,wed,fri" 或 "1,3,5" → ISO 1-7 数组。 */
-function parseWeekdays(s?: string): number[] | undefined {
-  if (!s) return undefined
-  const out = s
-    .split(',')
-    .map((x) => x.trim().toLowerCase())
-    .filter(Boolean)
-    .map((x) => WEEKDAY_ALIAS[x] ?? Number(x))
-    .filter((n) => Number.isInteger(n) && n >= 1 && n <= 7)
-  return out.length ? out : undefined
-}
 
 export interface CreateArgs {
   title: string
@@ -57,9 +32,9 @@ export async function cmdCreate(ctx: Ctx, a: CreateArgs): Promise<void> {
 
   let repeat: RepeatInput | undefined
   if (a.repeat) {
-    const unit = UNIT_ALIAS[a.repeat.toLowerCase()]
+    const unit = normalizeRepeatUnit(a.repeat)
     if (!unit) throw new Error('--repeat must be one of: day, week, month, year')
-    if (!a.when) throw new Error('--repeat needs --when (the first occurrence date, e.g. --when 2026-06-15)')
+    if (!a.when) throw new Error('--repeat needs --when (the first date, e.g. --when 2026-06-15)')
     repeat = {
       unit,
       interval: a.every,

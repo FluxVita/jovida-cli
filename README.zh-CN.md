@@ -11,7 +11,7 @@
 ## 两部分
 
 - **`jovida` 命令** —— 经 HTTPS 操作你的 Jovida 账号(需登录),**不留本地待办库**,与你的其他 Jovida 设备同步。
-- **`SKILL.md`**(name:`jovida-cli`)—— 可移植的行为指引,教你的 AI 走**单轨:写即时生效**(无提议/确认步骤,暂无撤回)。
+- **`SKILL.md`**(name:`jovida-cli`)—— 可移植的行为指引,教你的 AI 走**单轨:写即时生效**(无提议/确认步骤;`complete` 可经 `reopen` 撤回,但 `delete` 永久)。
 
 ## 安装
 

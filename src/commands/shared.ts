@@ -1,6 +1,5 @@
 import { newEntryId, newRecurringId } from '../core/ids'
 import type { TodoDraft, TodoEntry, TodoRecurring } from '../core/types'
-import type { Ctx } from '../ctx'
 
 export const nowSec = (): number => Math.floor(Date.now() / 1000)
 
@@ -52,13 +51,4 @@ export function draftToRecurring(d: TodoDraft): TodoRecurring {
     createdAt: t,
     updatedAt: t
   }
-}
-
-/** 确保登录 + 拉快照找 entry;未找到 → NotFoundError。 */
-export async function fetchEntry(ctx: Ctx, id: string): Promise<TodoEntry> {
-  await ctx.session.ensureSession()
-  const snap = await ctx.sync.pull()
-  const e = snap.entries.find((x) => x.entryId === id)
-  if (!e) throw new NotFoundError(id)
-  return e
 }

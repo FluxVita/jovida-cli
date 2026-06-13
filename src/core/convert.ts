@@ -92,6 +92,55 @@ function toRepeat(r: RepeatInput | undefined): RepeatRule | undefined {
   }
 }
 
+// --repeat 取值(含 daily/weekly… 别名)→ 存储 unit。create / update 共用。
+const UNIT_ALIAS: Record<string, RepeatUnit> = {
+  day: 'day',
+  daily: 'day',
+  week: 'week',
+  weekly: 'week',
+  month: 'month',
+  monthly: 'month',
+  year: 'year',
+  yearly: 'year'
+}
+export function normalizeRepeatUnit(s: string): RepeatUnit | undefined {
+  return UNIT_ALIAS[s.trim().toLowerCase()]
+}
+
+const WEEKDAY_ALIAS: Record<string, number> = { mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6, sun: 7 }
+/** "mon,wed,fri" 或 "1,3,5" → ISO 1-7 数组(空/无效 → undefined)。 */
+export function parseWeekdays(s?: string): number[] | undefined {
+  if (!s) return undefined
+  const out = s
+    .split(',')
+    .map((x) => x.trim().toLowerCase())
+    .filter(Boolean)
+    .map((x) => WEEKDAY_ALIAS[x] ?? Number(x))
+    .filter((n) => Number.isInteger(n) && n >= 1 && n <= 7)
+  return out.length ? out : undefined
+}
+
+/**
+ * 在原 RepeatRule 上覆盖传入的部分字段(update 重复待办用)。
+ * 改 unit 时清掉不再适用的字段(如 week→month 丢弃 weekdays);只想微调时无需重给整条。
+ */
+export function mergeRepeat(cur: RepeatRule, c: Partial<RepeatInput>): RepeatRule {
+  const unit = c.unit ?? cur.unit
+  let endAt = cur.endAt
+  if (c.until) endAt = DATE_ONLY.test(c.until) ? belongDateToSec(c.until) : isoToSec(c.until)
+  // 每个字段按「新 unit 是否使用」决定:使用则保留原值(除非本次传了新值),不使用则清。
+  // 注意 day_of_month 同时被 month 和 year 用,故 month↔year 切换不应清它。
+  return {
+    unit,
+    interval: c.interval && c.interval > 0 ? c.interval : cur.interval,
+    weekdays:
+      unit === 'week' ? (c.weekdays ?? cur.weekdays).filter((w) => Number.isInteger(w) && w >= 1 && w <= 7) : [],
+    dayOfMonth: unit === 'month' || unit === 'year' ? c.day_of_month ?? cur.dayOfMonth : 0,
+    monthOfYear: unit === 'year' ? c.month_of_year ?? cur.monthOfYear : 0,
+    endAt
+  }
+}
+
 function toSubtasks(items?: { title: string }[]): Subtask[] | undefined {
   return items?.map((s) => ({ id: newSubtaskId(), title: s.title, completedAt: 0 }))
 }
@@ -229,27 +278,26 @@ export function toFullTodo(e: TodoEntry, repeat?: RepeatRule): Record<string, un
     status: e.completedAt > 0 ? 'completed' : 'pending',
     completed_at: e.completedAt > 0 ? secToIso(e.completedAt) : undefined,
     recurring_id: e.recurringId || undefined,
-    occurrence_at: e.occurrenceAt > 0 ? secToBelongDate(e.occurrenceAt) : undefined,
+    repeat_date: e.occurrenceAt > 0 ? secToBelongDate(e.occurrenceAt) : undefined,
     repeat: repeat ? repeatToOutput(repeat) : undefined,
     created_at: secToIso(e.createdAt),
     updated_at: secToIso(e.updatedAt)
   }
 }
 
-/** 循环「类」视图（todo_get 传入 recurring_id 时返回）。nextOccurrences = 近几次发生日（YYYY-MM-DD）。 */
-export function toSeriesTodo(s: TodoRecurring, nextOccurrences: string[]): Record<string, unknown> {
+/** 重复待办视图（todo_get 传入 recurring_id 时返回）。规则本身即完整排程,不枚举发生。 */
+export function toSeriesTodo(s: TodoRecurring): Record<string, unknown> {
   return {
     recurring_id: s.recurringId,
-    type: 'recurring',
+    type: 'repeating',
     title: s.title,
     description: s.description,
     category: s.category,
     priority: s.priority,
-    when: s.dueAt > 0 ? secToIso(s.dueAt) : secToBelongDate(s.belongAt), // 首次发生（种子）
+    when: s.dueAt > 0 ? secToIso(s.dueAt) : secToBelongDate(s.belongAt), // 首次日期（种子）
     subtasks: s.subtasks.map((st) => ({ title: st.title, completed: st.completedAt > 0 })),
     remind_at: reminderToIsoList(s),
     repeat: repeatToOutput(s.repeat),
-    next_occurrences: nextOccurrences,
     created_at: secToIso(s.createdAt),
     updated_at: secToIso(s.updatedAt)
   }

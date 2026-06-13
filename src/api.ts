@@ -58,11 +58,19 @@ export class ApiClient {
   }
 
   private async fetchJson<T>(path: string, method: 'GET' | 'POST', body?: unknown): Promise<T> {
-    const res = await fetch(`${this.cfg.baseUrl}${path}`, {
-      method,
-      headers: this.headers(),
-      body: method === 'GET' ? undefined : JSON.stringify(body ?? {})
-    })
+    let res: Response
+    try {
+      res = await fetch(`${this.cfg.baseUrl}${path}`, {
+        method,
+        headers: this.headers(),
+        body: method === 'GET' ? undefined : JSON.stringify(body ?? {})
+      })
+    } catch (e) {
+      // fetch 本身抛错(DNS/连接拒绝/超时)→ 网络故障,归 ApiError(status 0) → exit 3,
+      // 别落到通用 exit 1(usage),否则 agent 会误判为命令写错而乱改重试。
+      const msg = e instanceof Error ? e.message : String(e)
+      throw new ApiError(0, 'NETWORK', `network error reaching ${path}: ${msg}`)
+    }
     if (!res.ok) {
       let reason = ''
       try {

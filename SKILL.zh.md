@@ -34,7 +34,7 @@ allowed-tools: Bash(jovida:*)
 
 - **待办的时间有两种粒度(同一个 `--when`)。** 纯**日期**(`2026-06-05`)= 归属*那天*、无硬截止;带时刻的 **datetime**(`2026-06-05T18:00:00+08:00`)= 精确**截止**。你确切知道哪个就给哪个。别把「周三做但周五截止」拆开——若周五截止,它就是周五的待办。
 - **提醒与时间分开,且提醒 ≠ 截止。** 提醒是*何时来提个醒*;每条须早于或等于待办的时间。「提醒我明天 X」= 明天的待办 + 明早一条提醒,**不**让 X 在那一刻截止。一条待办可带多个提醒。
-- **循环 = 一个「类」(series),不是一条待办。** 用循环规则创建会生成一个循环**类**(返回 `recurring_id`);它的各次发生之后会像普通待办一样出现在 `list` 里,各有自己的 `entry_id`(并带 `recurring_id` 回指)。循环用于真正重复的承诺(「每个工作日站会」),而非几个零散日期——那些建多条单独待办。
+- **待办可以重复。** 给一条待办加重复规则,它就成为一条**重复待办**:`create` 返回它的 `recurring_id`(而非 `entry_id`)。用 `jovida view <recurring_id>` 看规则、`jovida update <recurring_id>` 改规则。**注意**:`list` 目前还不会展开重复待办的发生,所以重复待办不会作为按日期的条目出现在 `list` 里(已规划支持)。它用于真正的例行(「每个工作日站会」);几个互相独立的日期就建多条单独待办。
 - **其余:** **子任务**把一件事拆成步骤;**category** 是分组标签;**priority** 为 none/low/medium/high;**hint** 是可选的一句话提示——仅在确有帮助时加。
 
 ## 命令速览
@@ -42,9 +42,9 @@ allowed-tools: Bash(jovida:*)
 语义见下;确切参数跑 `jovida <命令> --help`。
 
 - **`jovida list`** —— 待办的**受限视图**(默认今天的 pending),**不是搜索**;用 scope/status/range 放宽。这是你拿 `entry_id` 的首选。加 `--full` 可在同一次调用里拿到全字段(description、subtasks、提醒)——一跳搞定,省去 `list` 后再 `view`。
-- **`jovida view <entry_id>`** —— 单条待办完整详情(description、subtasks、提醒……)。
-- **`jovida create "<标题>"`** —— 新建一条待办(**一次一条**;多条多次跑)。加循环规则则改为创建循环类。
-- **`jovida update <entry_id>`** —— 改已有待办的字段;**只改你传的字段**。`--remind` / `--subtask` 是**整列替换**(非追加)。
+- **`jovida view <entry_id>`** —— 单条待办完整详情(description、subtasks、提醒……)。改传重复待办的 `recurring_id` 则回看它的重复规则。
+- **`jovida create "<标题>"`** —— 新建一条待办(**一次一条**;多条多次跑)。给它加重复规则则成为一条重复待办(返回 `recurring_id`)。
+- **`jovida update <entry_id>`** —— 改已有待办的字段;**只改你传的字段**。`--remind` / `--subtask` 是**整列替换**(非追加)。传 `recurring_id` 则改重复待办——含其重复规则。
 - **`jovida complete <id> [<id> …]`** —— 标记完成(一次传多个 id)。
 - **`jovida reopen <id> [<id> …]`** —— 重新打开已完成的待办(`complete` 的逆操作)。
 - **`jovida delete <id> [<id> …]`** —— 永久删除(一次传多个 id;**无撤回**)。
@@ -58,11 +58,12 @@ allowed-tools: Bash(jovida:*)
 - **一个带步骤的交付物:** 给这个产出建**一条** `jovida create`,用 `--subtask` 列各步骤——当步骤同属一个结果时,别拆成多条独立待办。
 - **修改或改期:** 先 `jovida list`(或 `view`)拿 `entry_id`,再 `jovida update`。挪截止改 `--when`。记住 `--remind` / `--subtask` 是整列替换。
 - **完成或清理:** 先 `jovida list` 看有哪些开着,再 `jovida complete`(做完)或 `jovida delete`(移除)——相关 id 一次全传。除非该项压根不是真任务,否则优先 `complete` 而非 `delete`;若误标完成,`jovida reopen` 可撤回(而 `delete` 无法撤回)。
-- **重复的承诺:** 用循环规则建一次(一个类)。几个不规则日期则建多条单独待办。
+- **例行(重复):** 给一条待办加重复规则,建一次即可。几个不规则日期则建多条单独待办。
 - **「我手头有啥?」** `jovida list`(今天,或放宽 scope),从 JSON 里汇总。只读——别写任何东西。
 
 ## 纪律
 
 - 标题及含空格的值要加引号。标题/描述保持**单行纯文本**——经参数传换行或 shell 特殊字符会被破坏。
 - **绝不把 token 写进命令**(会进 shell history / 进程列表)。登录是用户的交互步骤。
+- `delete` 是幂等的:对不存在的 id 也报成功(不像 `complete`/`reopen` 会因 id 不存在而失败)。所以别因为 `delete`「成功」就断定那条待办曾经存在。
 - 命令非零退出就别谎称成功——读错误并告知用户(exit `2` → 请他们 `jovida login`)。
