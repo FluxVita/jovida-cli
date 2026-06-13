@@ -44,7 +44,7 @@ allowed-tools: Bash(jovida:*)
 - **`jovida list`** —— 列出待办(默认今天的 pending)。用 scope/status/range 放宽,或用 **`--query <文本>`(标题+描述)、`--category`、`--priority` 搜索/过滤**(带任一过滤时 scope+status 默认放开到 *all*)。JSON 带 **`total` + `has_more`**——若 `has_more` 为真说明被 `--limit` 截断了,应调大 `--limit` 或收窄查询,**别据此断定某条待办不存在**。加 `--full` 可一次拿全字段(无需再 `view`)。重复待办以带日期的**发生**呈现、带 `recurring_id` 标注:显式 `--scope range --from/--to` 列出该窗口内**每一次**发生;`today`/`upcoming` 只给每条例行的下一次发生。
 - **`jovida view <entry_id>`** —— 单条待办完整详情(description、subtasks、提醒……)。改传重复待办的 `recurring_id` 则回看它的重复规则。
 - **`jovida create "<标题>"`** —— 新建一条待办(**一次一条**;多条多次跑)。给它加重复规则则成为一条重复待办(返回 `recurring_id`)。
-- **`jovida update <entry_id>`** —— 改待办的字段;**只改你传的字段**。`--remind` / `--subtask` 整列替换(子任务会按标题保留同名项的完成状态;单条子任务用下面的 `subtask`)。传 `recurring_id` 则改重复待办——含其重复规则。
+- **`jovida update <entry_id>`** —— 改待办的字段;**只改你传的字段**。`--remind` / `--subtask` 整列替换(子任务会按标题保留同名项的完成状态;单条子任务用下面的 `subtask`)。传 `recurring_id` 改重复待办(含重复规则);传**发生 id**(取自 `list`)则只改那一次发生(会把那天材料化;例行与其它发生不动)。要停掉例行的后续发生,给重复待办设 `--until`。
 - **`jovida complete <id> [<id> …]`** —— 标记完成(一次传多个 id)。也可传重复待办某次发生的 id(取自 `list`)只勾掉那一天——它会把该次发生材料化,例行继续运行。
 - **`jovida reopen <id> [<id> …]`** —— 重新打开已完成的待办(`complete` 的逆操作)。
 - **`jovida subtask check|uncheck|add|rm <entry_id> …`** —— 勾选/取消/新增/删除单条子任务(按 id 或 `view` 里的 1-based 序号寻址)。

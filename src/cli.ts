@@ -162,10 +162,10 @@ Usage:
 Given a repeating todo's recurring_id, shows its repeat rule.
 Given an occurrence id (from list, "recurring:…"), shows that occurrence with its rule.
 `,
-  update: `jovida update — change fields of a todo, or of a repeating todo (only the given fields change)
+  update: `jovida update — change fields of a todo, a repeating todo, or one occurrence (only the given fields change)
 
 Usage:
-  jovida update <entry_id|recurring_id> [options]
+  jovida update <entry_id | recurring_id | occurrence_id> [options]
 
 Options (same as create; --title renames):
   --title <s>  --when <ISO>  --priority <p>  --category <s>  --desc <s>
@@ -177,10 +177,15 @@ For a repeating todo (recurring_id), you can also change its repeat rule:
   --repeat <unit>  --every <N>  --weekdays <list>  --day-of-month <N>  --month-of-year <N>  --until <YYYY-MM-DD>
   (only the parts you pass change; switching --repeat unit drops parts that no longer apply)
 
+Given an occurrence id (from list, "recurring:…"), this edits just that one occurrence (it
+materializes it; the routine and other occurrences are unchanged). You can't change the repeat
+rule from an occurrence — edit the recurring_id for that.
+
 Examples:
   jovida update cli_01H... --priority high --when 2026-06-21T09:00:00+08:00
   jovida update series_01H... --weekdays mon,fri      # change which weekdays it repeats
-  jovida update series_01H... --until 2026-12-31      # set an end date
+  jovida update series_01H... --until 2026-12-31      # set an end date / stop future occurrences
+  jovida update recurring:series_01H...:1781452800 --title "moved" --when 2026-06-15T14:00:00+08:00   # tweak one occurrence
 `,
   complete: `jovida complete — mark one or more todos done
 

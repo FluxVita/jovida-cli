@@ -7,7 +7,7 @@ import {
   type RepeatInput
 } from '../core/convert'
 import type { Priority, RepeatUnit, TodoEntry, TodoRecurring } from '../core/types'
-import { parseOccurrenceId } from '../core/recurrence'
+import { occurrenceToEntry, parseOccurrenceId, seriesOccursOn, ymdFromSec } from '../core/recurrence'
 import type { Ctx } from '../ctx'
 import { nowSec, NotFoundError } from './shared'
 
@@ -82,6 +82,12 @@ export async function cmdUpdate(ctx: Ctx, a: UpdateArgs): Promise<void> {
   const entry = snap.entries.find((x) => x.entryId === a.id)
   if (entry) {
     if (repeatTouched) {
+      if (entry.recurringId) {
+        throw new Error(
+          `Can't change the repeat rule from a single occurrence — that belongs to the routine. ` +
+            `Edit the whole routine via its recurring_id (${entry.recurringId}).`
+        )
+      }
       throw new Error(
         "This todo doesn't repeat. Turning an existing todo into a repeating one isn't supported — create a repeating todo instead (jovida create … --repeat …)."
       )
@@ -147,13 +153,39 @@ export async function cmdUpdate(ctx: Ctx, a: UpdateArgs): Promise<void> {
     return
   }
 
-  // ── 重复待办某次「发生」的 id ──:改单次发生(override)尚未支持。
+  // ── 重复待办某次「发生」的 id(尚未材料化)──:override = fork 该发生成真实条目 + 套用改动。
+  // (已材料化的发生其 id = 真实 entry id,上面 entry 分支已处理 → 这里只剩纯虚拟发生。)
   const occ = parseOccurrenceId(a.id)
-  if (occ && snap.recurrings.some((s) => s.recurringId === occ.recurringId)) {
-    throw new Error(
-      `Editing a single occurrence isn't supported yet. Edit the whole routine via its recurring_id (${occ.recurringId}), ` +
-        `or use jovida complete to tick off just this occurrence.`
-    )
+  if (occ) {
+    const series = snap.recurrings.find((s) => s.recurringId === occ.recurringId)
+    const day = ymdFromSec(occ.occurrenceSec)
+    if (series && seriesOccursOn(series, day)) {
+      if (repeatTouched) {
+        throw new Error(
+          `Can't change the repeat rule of a single occurrence — that belongs to the routine. ` +
+            `Edit the whole routine via its recurring_id (${series.recurringId}).`
+        )
+      }
+      const base = occurrenceToEntry(series, day) // 继承 series 字段 + 确定性 id/recurringId/occurrenceAt
+      const d = mergeDraft(base, changes)
+      const forked: TodoEntry = {
+        ...base,
+        title: d.title,
+        description: d.description ?? '',
+        category: d.category ?? '',
+        priority: d.priority ?? 'none',
+        dueAt: d.dueAt ?? 0,
+        belongAt: d.belongAt ?? 0,
+        subtasks: d.subtasks ?? [],
+        reminder: d.reminder ?? null,
+        hint: d.hint ?? '',
+        updatedAt: nowSec()
+      }
+      await ctx.sync.putEntries([forked])
+      if (a.json) console.log(JSON.stringify({ entry_id: forked.entryId, status: 'updated' }))
+      else console.log(`✓ updated (occurrence)  ${forked.title}  (${forked.entryId})`)
+      return
+    }
   }
 
   throw new NotFoundError(a.id)
