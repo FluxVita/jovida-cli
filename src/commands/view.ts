@@ -35,7 +35,7 @@ export async function cmdView(ctx: Ctx, a: { id: string; json?: boolean }): Prom
       entry.category ? `    list      ${entry.category}` : '',
       entry.description ? `    note      ${entry.description}` : '',
       full.remind_at ? `    remind    ${(full.remind_at as string[]).join(', ')}` : '',
-      entry.subtasks.length ? `    subtasks  ${entry.subtasks.map((s) => `${s.completedAt > 0 ? '✓' : '·'} ${s.title}`).join('  ')}` : '',
+      entry.subtasks.length ? `    subtasks  ${entry.subtasks.map((s, i) => `${i + 1}.${s.completedAt > 0 ? '✓' : '·'} ${s.title}`).join('  ')}` : '',
       entry.hint ? `    hint      ${entry.hint}` : ''
     ].filter(Boolean)
     console.log(lines.join('\n'))

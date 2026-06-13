@@ -59,7 +59,7 @@ jovida complete <entry_id>
 
 ## Commands
 
-`create` · `list` · `view` · `update` · `complete` · `reopen` · `delete` · `login` · `logout` · `whoami`.
+`create` · `list` · `view` · `update` · `complete` · `reopen` · `subtask` · `delete` · `login` · `logout` · `whoami`.
 Run `jovida help` for usage, or see [`SKILL.md`](./SKILL.md) for flags & field conventions.
 
 ## Auth

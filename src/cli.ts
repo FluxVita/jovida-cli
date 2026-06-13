@@ -6,6 +6,7 @@ import { cmdView } from './commands/view'
 import { cmdUpdate } from './commands/update'
 import { cmdComplete } from './commands/complete'
 import { cmdReopen } from './commands/reopen'
+import { cmdSubtask } from './commands/subtask'
 import { cmdDelete } from './commands/delete'
 import { cmdLogin } from './commands/login'
 import { cmdWhoami } from './commands/whoami'
@@ -82,6 +83,7 @@ Usage:
                           (recurring_id: also --repeat/--every/--weekdays/--until to change the repeat rule)
   jovida complete <entry_id> [<entry_id> ...] [--json]
   jovida reopen <entry_id> [<entry_id> ...] [--json]
+  jovida subtask check|uncheck|add|rm <entry_id> <id|index ...> [--json]
   jovida delete <entry_id> [<entry_id> ...] [--json]
 
 Output: JSON is emitted automatically when stdout is not a TTY (use --json/--no-json to force).
@@ -177,6 +179,16 @@ Usage:
 
 Usage:
   jovida reopen <entry_id> [<entry_id> ...] [--json]
+`,
+  subtask: `jovida subtask — check / uncheck / add / remove a todo's subtasks
+
+Usage:
+  jovida subtask check   <entry_id> <id|index ...>   # mark subtask(s) done
+  jovida subtask uncheck <entry_id> <id|index ...>   # mark not done
+  jovida subtask add     <entry_id> "<title>"        # append a subtask
+  jovida subtask rm      <entry_id> <id|index ...>   # remove subtask(s)
+
+Address a subtask by its id (sub_…) or its 1-based number from \`jovida view <entry_id>\`.
 `,
   delete: `jovida delete — permanently remove one or more todos (no undo)
 
@@ -318,6 +330,9 @@ async function main(): Promise<void> {
       break
     case 'reopen':
       await cmdReopen(ctx, { ids: positionals, json })
+      break
+    case 'subtask':
+      await cmdSubtask(ctx, { action: positionals[0], entryId: positionals[1], rest: positionals.slice(2), json })
       break
     case 'delete':
       await cmdDelete(ctx, { ids: positionals, json })

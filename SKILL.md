@@ -42,9 +42,10 @@ Semantics below; exact flags via `jovida <cmd> --help`.
 - **`jovida list`** — a scoped *view* of todos (defaults to today's pending), **not a search**; widen with scope/status/range. Your go-to for finding the `entry_id` you need. Add `--full` to get every field (description, subtasks, reminders) in the same call — one round-trip instead of `list` then `view`.
 - **`jovida view <entry_id>`** — full detail of one todo (description, subtasks, reminders, …). Pass a repeating todo's `recurring_id` instead to see its repeat rule.
 - **`jovida create "<title>"`** — add one todo (**one per call**; run again for more). Give it a repeat rule to make it a repeating todo instead (returns a `recurring_id`).
-- **`jovida update <entry_id>`** — change fields of an existing todo; **only the fields you pass change**. `--remind` / `--subtask` **replace** the whole list (not append). Pass a `recurring_id` to edit a repeating todo instead — including its repeat rule.
+- **`jovida update <entry_id>`** — change fields of a todo; **only the fields you pass change**. `--remind` / `--subtask` replace the whole list (subtasks keep the completion of same-titled ones; for individual subtasks use `subtask` below). Pass a `recurring_id` to edit a repeating todo instead — including its repeat rule.
 - **`jovida complete <id> [<id> …]`** — mark done (pass several ids in one call).
 - **`jovida reopen <id> [<id> …]`** — reopen completed todos (the inverse of `complete`).
+- **`jovida subtask check|uncheck|add|rm <entry_id> …`** — check / uncheck / add / remove an individual subtask (address it by its id or its 1-based number from `view`).
 - **`jovida delete <id> [<id> …]`** — permanently remove (several ids in one call; **no undo**).
 - **`jovida whoami` / `login` / `logout`** — session. `login` is the user's interactive step.
 
@@ -55,6 +56,7 @@ Map the user's intent to a sequence; read before any change.
 - **Capture several items from one message** (meeting notes, a brain-dump): pick out the *real* commitments, then run `jovida create` once per item. Don't cram several tasks into one todo, and don't capture the surrounding discussion.
 - **A deliverable with steps:** one `jovida create` for the outcome, with `--subtask` per step — not many separate todos, when the steps belong to a single result.
 - **Change or reschedule:** `jovida list` (or `view`) to get the `entry_id`, then `jovida update`. To move a deadline, update `--when`. Remember `--remind` / `--subtask` replace the list.
+- **Tick off a step:** `jovida view <id>` to see the numbered subtasks, then `jovida subtask check <id> <n>` (n is the number, or the subtask's id).
 - **Finish or clean up:** `jovida list` to see what's open, then `jovida complete` (done) or `jovida delete` (remove) — pass all related ids in one call. Prefer `complete` over `delete` unless the item was never real; if you marked one done by mistake, `jovida reopen` undoes it (a `delete` cannot be undone).
 - **A recurring routine:** create one todo with a repeat rule. For a few irregular dates, create individual todos instead.
 - **"What's on my plate?"** `jovida list` (today, or widen the scope) and summarize from the JSON. Read-only — don't write anything.

@@ -145,6 +145,22 @@ function toSubtasks(items?: { title: string }[]): Subtask[] | undefined {
   return items?.map((s) => ({ id: newSubtaskId(), title: s.title, completedAt: 0 }))
 }
 
+/**
+ * update 重设子任务列表时,按 title 匹配旧子任务、保留其 id + 完成状态;只有新 title 才新建。
+ * 避免「整列重写」把别端勾过的完成状态/id 清零(细粒度勾选另走 `jovida subtask`)。
+ */
+function mergeSubtasks(incoming: { title: string }[], existing: Subtask[]): Subtask[] {
+  const used = new Set<number>()
+  return incoming.map((s) => {
+    const idx = existing.findIndex((e, i) => !used.has(i) && e.title === s.title)
+    if (idx >= 0) {
+      used.add(idx)
+      return existing[idx]
+    }
+    return { id: newSubtaskId(), title: s.title, completedAt: 0 }
+  })
+}
+
 // reminder 触发锚 reminderAnchorSec 见 capability/reminder/triggers.ts（与调度器共用）。
 
 // remind_at（一个或多个 ISO 绝对时刻）→ Reminder。每个 offset = 锚 − remind_at，须 ≥0（提醒只能在锚前）。
@@ -241,7 +257,7 @@ export function mergeDraft(target: TodoEntry, changes: ChangesInput): TodoDraft 
     priority: changes.priority ?? target.priority,
     dueAt,
     belongAt,
-    subtasks: changes.subtasks !== undefined ? toSubtasks(changes.subtasks) : target.subtasks,
+    subtasks: changes.subtasks !== undefined ? mergeSubtasks(changes.subtasks, target.subtasks) : target.subtasks,
     // 改了 remind_at 才按新锚重算；否则保留原 offset（锚变则提醒时刻随之平移，符合"提前量"语义）
     reminder:
       changes.remind_at !== undefined ? toReminder(changes.remind_at, dueAt, belongAt) : (target.reminder ?? undefined),
@@ -272,7 +288,7 @@ export function toFullTodo(e: TodoEntry, repeat?: RepeatRule): Record<string, un
     category: e.category,
     priority: e.priority,
     when: toWhen(e),
-    subtasks: e.subtasks.map((s) => ({ title: s.title, completed: s.completedAt > 0 })),
+    subtasks: e.subtasks.map((s) => ({ id: s.id, title: s.title, completed: s.completedAt > 0 })),
     remind_at: reminderToIsoList(e),
     hint: e.hint || undefined,
     status: e.completedAt > 0 ? 'completed' : 'pending',
@@ -295,7 +311,7 @@ export function toSeriesTodo(s: TodoRecurring): Record<string, unknown> {
     category: s.category,
     priority: s.priority,
     when: s.dueAt > 0 ? secToIso(s.dueAt) : secToBelongDate(s.belongAt), // 首次日期（种子）
-    subtasks: s.subtasks.map((st) => ({ title: st.title, completed: st.completedAt > 0 })),
+    subtasks: s.subtasks.map((st) => ({ id: st.id, title: st.title, completed: st.completedAt > 0 })),
     remind_at: reminderToIsoList(s),
     repeat: repeatToOutput(s.repeat),
     created_at: secToIso(s.createdAt),

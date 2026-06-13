@@ -59,7 +59,7 @@ jovida complete <entry_id>
 
 ## 命令
 
-`create` · `list` · `view` · `update` · `complete` · `reopen` · `delete` · `login` · `logout` · `whoami`。
+`create` · `list` · `view` · `update` · `complete` · `reopen` · `subtask` · `delete` · `login` · `logout` · `whoami`。
 `jovida help` 查看用法,或见 [`SKILL.md`](./SKILL.md) 了解参数与字段约定。
 
 ## 鉴权

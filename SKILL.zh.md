@@ -44,9 +44,10 @@ allowed-tools: Bash(jovida:*)
 - **`jovida list`** —— 待办的**受限视图**(默认今天的 pending),**不是搜索**;用 scope/status/range 放宽。这是你拿 `entry_id` 的首选。加 `--full` 可在同一次调用里拿到全字段(description、subtasks、提醒)——一跳搞定,省去 `list` 后再 `view`。
 - **`jovida view <entry_id>`** —— 单条待办完整详情(description、subtasks、提醒……)。改传重复待办的 `recurring_id` 则回看它的重复规则。
 - **`jovida create "<标题>"`** —— 新建一条待办(**一次一条**;多条多次跑)。给它加重复规则则成为一条重复待办(返回 `recurring_id`)。
-- **`jovida update <entry_id>`** —— 改已有待办的字段;**只改你传的字段**。`--remind` / `--subtask` 是**整列替换**(非追加)。传 `recurring_id` 则改重复待办——含其重复规则。
+- **`jovida update <entry_id>`** —— 改待办的字段;**只改你传的字段**。`--remind` / `--subtask` 整列替换(子任务会按标题保留同名项的完成状态;单条子任务用下面的 `subtask`)。传 `recurring_id` 则改重复待办——含其重复规则。
 - **`jovida complete <id> [<id> …]`** —— 标记完成(一次传多个 id)。
 - **`jovida reopen <id> [<id> …]`** —— 重新打开已完成的待办(`complete` 的逆操作)。
+- **`jovida subtask check|uncheck|add|rm <entry_id> …`** —— 勾选/取消/新增/删除单条子任务(按 id 或 `view` 里的 1-based 序号寻址)。
 - **`jovida delete <id> [<id> …]`** —— 永久删除(一次传多个 id;**无撤回**)。
 - **`jovida whoami` / `login` / `logout`** —— 会话。`login` 是用户的交互步骤。
 
@@ -57,6 +58,7 @@ allowed-tools: Bash(jovida:*)
 - **从一条消息里捕获多个事项**(会议纪要、头脑倾倒):挑出*真正的*承诺,然后每条跑一次 `jovida create`。别把多件事塞进一条待办,也别把周边讨论记进去。
 - **一个带步骤的交付物:** 给这个产出建**一条** `jovida create`,用 `--subtask` 列各步骤——当步骤同属一个结果时,别拆成多条独立待办。
 - **修改或改期:** 先 `jovida list`(或 `view`)拿 `entry_id`,再 `jovida update`。挪截止改 `--when`。记住 `--remind` / `--subtask` 是整列替换。
+- **勾掉某一步:** 先 `jovida view <id>` 看带序号的子任务,再 `jovida subtask check <id> <n>`(n 是序号,或子任务的 id)。
 - **完成或清理:** 先 `jovida list` 看有哪些开着,再 `jovida complete`(做完)或 `jovida delete`(移除)——相关 id 一次全传。除非该项压根不是真任务,否则优先 `complete` 而非 `delete`;若误标完成,`jovida reopen` 可撤回(而 `delete` 无法撤回)。
 - **例行(重复):** 给一条待办加重复规则,建一次即可。几个不规则日期则建多条单独待办。
 - **「我手头有啥?」** `jovida list`(今天,或放宽 scope),从 JSON 里汇总。只读——别写任何东西。
