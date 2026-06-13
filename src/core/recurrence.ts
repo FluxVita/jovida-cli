@@ -133,16 +133,28 @@ export function nextOpenOccurrence(
   horizonSec: number,
   forked: Map<string, TodoEntry>
 ): YMD | null {
-  for (const day of seriesOccurrencesInRange(s, fromSec, horizonSec)) {
-    const real = forked.get(occurrenceKey(s.recurringId, day))
-    if (!real) return day
-    if (real.completedAt === 0) return null
+  // 逐天走、命中即返回——不预构整段范围数组(daily 几乎首日即出;稀疏规则才走远)。
+  if (horizonSec < fromSec) return null
+  const cur = new Date(fromSec * 1000)
+  cur.setHours(0, 0, 0, 0)
+  const end = new Date(horizonSec * 1000)
+  end.setHours(0, 0, 0, 0)
+  while (cur <= end) {
+    const day: YMD = { y: cur.getFullYear(), m: cur.getMonth() + 1, d: cur.getDate() }
+    if (seriesOccursOn(s, day)) {
+      const real = forked.get(occurrenceKey(s.recurringId, day))
+      if (!real) return day
+      if (real.completedAt === 0) return null // open 真实条目已展示 → 不再补虚拟
+      // completed → 继续找下一次
+    }
+    cur.setDate(cur.getDate() + 1)
   }
   return null
 }
 
 /** fork / 虚拟发生的**确定性** id:`recurring:<recurringId>:<发生日本地0点秒>`。 */
-/* 跨端一致 → 两台设备 fork 同一发生生成同 id → 后端按 (user,entry_id) upsert 合并,不重复。 */
+/* 同一时区的设备 fork 同一发生 → 生成同 id → 后端按 (user,entry_id) upsert 合并不重复。 */
+/* 注意:秒数取自**本地**当天 0 点,故不同时区的设备对「同一天」会算出不同秒→不同 id(与官方 app 同源的设计取舍,非本端缺陷)。 */
 export function occurrenceId(recurringId: string, occurrenceSec: number): string {
   return `recurring:${recurringId}:${occurrenceSec}`
 }

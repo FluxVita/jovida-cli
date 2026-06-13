@@ -7,6 +7,7 @@ import {
   type RepeatInput
 } from '../core/convert'
 import type { Priority, RepeatUnit, TodoEntry, TodoRecurring } from '../core/types'
+import { parseOccurrenceId } from '../core/recurrence'
 import type { Ctx } from '../ctx'
 import { nowSec, NotFoundError } from './shared'
 
@@ -144,6 +145,15 @@ export async function cmdUpdate(ctx: Ctx, a: UpdateArgs): Promise<void> {
     if (a.json) console.log(JSON.stringify({ recurring_id: updated.recurringId, status: 'updated' }))
     else console.log(`✓ updated (repeating)  ${updated.title}  (${updated.recurringId})`)
     return
+  }
+
+  // ── 重复待办某次「发生」的 id ──:改单次发生(override)尚未支持。
+  const occ = parseOccurrenceId(a.id)
+  if (occ && snap.recurrings.some((s) => s.recurringId === occ.recurringId)) {
+    throw new Error(
+      `Editing a single occurrence isn't supported yet. Edit the whole routine via its recurring_id (${occ.recurringId}), ` +
+        `or use jovida complete to tick off just this occurrence.`
+    )
   }
 
   throw new NotFoundError(a.id)
