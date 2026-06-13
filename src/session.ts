@@ -60,11 +60,16 @@ export class Session {
     if (t) api.setToken(t.raw)
   }
 
-  /** 业务命令前：无 token → NotSignedIn；access 临期 → 续期。 */
+  /** 业务命令前：无 token → NotSignedIn；refresh 窗口已死 → 提前要求重登；access 临期 → 续期。 */
   async ensureSession(): Promise<void> {
     const t = getToken()
     if (!t) throw new NotSignedInError()
     this.api.setToken(t.raw)
+    // refresh 窗口已过：续期必然失败,直接清凭证要求重登(省一次注定 401 的请求)。
+    if (t.refreshDur > 0 && nowSec() > t.receivedAt + t.refreshDur - SKEW) {
+      clearCredentials()
+      throw new NotSignedInError('Session expired. Run `jovida login` again.')
+    }
     if (t.accessDur > 0 && nowSec() > t.receivedAt + t.accessDur - SKEW) await this.refresh()
   }
 
