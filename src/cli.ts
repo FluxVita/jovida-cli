@@ -77,6 +77,7 @@ Usage:
                           [--day-of-month N] [--month-of-year N] [--until YYYY-MM-DD]
                           (--repeat needs --when as the first date)
   jovida list  [--scope today|upcoming|recent|range|all] [--status pending|completed|all]
+               [--query <text>] [--category <s>] [--priority <p>]
                [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--limit N] [--full] [--json]
   jovida view <entry_id|recurring_id> [--json]
   jovida update <entry_id|recurring_id> [--title ...] [--when ...] [--remind ...] [...]
@@ -123,7 +124,7 @@ Examples:
   jovida create "submit report" --when 2026-06-20T18:00:00+08:00 --priority high
   jovida create "standup" --when 2026-06-15 --repeat week --weekdays mon,wed,fri
 `,
-  list: `jovida list — list todos (a scoped view, not a search)
+  list: `jovida list — list, search, and filter todos
 
 Usage:
   jovida list [options]
@@ -131,15 +132,22 @@ Usage:
 Options:
   --scope <s>    today (default) | upcoming | recent | range | all
   --status <s>   pending (default) | completed | all
+  --query <text> case-insensitive substring on title + description
+  --category <s> exact category match
+  --priority <p> none | low | medium | high
   --from <YYYY-MM-DD>  range start (with --scope range)
   --to <YYYY-MM-DD>    range end
   --limit <N>    max items (default 20)
   --full         JSON: include all fields (description, subtasks, reminders) — one round-trip instead of list + view
   --json
 
+Output carries "total" and "has_more" so you can tell when results were truncated by --limit.
+When --query/--category/--priority is given, scope and status default to "all" (search spans everything).
+
 Examples:
   jovida list
-  jovida list --scope all --status all
+  jovida list --query dentist                 # find todos mentioning "dentist"
+  jovida list --category work --priority high
   jovida list --scope range --from 2026-06-01 --to 2026-06-30
   jovida list --full          # full detail of each todo in one call
 `,
@@ -298,6 +306,9 @@ async function main(): Promise<void> {
         from: str(flags.from),
         to: str(flags.to),
         limit: num(flags.limit),
+        query: str(flags.query),
+        category: str(flags.category),
+        priority: str(flags.priority),
         full: flags.full === true,
         json
       })

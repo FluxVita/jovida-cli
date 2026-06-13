@@ -41,7 +41,7 @@ allowed-tools: Bash(jovida:*)
 
 语义见下;确切参数跑 `jovida <命令> --help`。
 
-- **`jovida list`** —— 待办的**受限视图**(默认今天的 pending),**不是搜索**;用 scope/status/range 放宽。这是你拿 `entry_id` 的首选。加 `--full` 可在同一次调用里拿到全字段(description、subtasks、提醒)——一跳搞定,省去 `list` 后再 `view`。
+- **`jovida list`** —— 列出待办(默认今天的 pending)。用 scope/status/range 放宽,或用 **`--query <文本>`(标题+描述)、`--category`、`--priority` 搜索/过滤**(带任一过滤时 scope+status 默认放开到 *all*)。JSON 带 **`total` + `has_more`**——若 `has_more` 为真说明被 `--limit` 截断了,应调大 `--limit` 或收窄查询,**别据此断定某条待办不存在**。加 `--full` 可一次拿全字段(无需再 `view`)。
 - **`jovida view <entry_id>`** —— 单条待办完整详情(description、subtasks、提醒……)。改传重复待办的 `recurring_id` 则回看它的重复规则。
 - **`jovida create "<标题>"`** —— 新建一条待办(**一次一条**;多条多次跑)。给它加重复规则则成为一条重复待办(返回 `recurring_id`)。
 - **`jovida update <entry_id>`** —— 改待办的字段;**只改你传的字段**。`--remind` / `--subtask` 整列替换(子任务会按标题保留同名项的完成状态;单条子任务用下面的 `subtask`)。传 `recurring_id` 则改重复待办——含其重复规则。

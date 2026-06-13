@@ -39,7 +39,7 @@ These shape *what you put in a command* — internalize them; flag spelling live
 
 Semantics below; exact flags via `jovida <cmd> --help`.
 
-- **`jovida list`** — a scoped *view* of todos (defaults to today's pending), **not a search**; widen with scope/status/range. Your go-to for finding the `entry_id` you need. Add `--full` to get every field (description, subtasks, reminders) in the same call — one round-trip instead of `list` then `view`.
+- **`jovida list`** — list todos (defaults to today's pending). Widen with scope/status/range, or **search/filter** with `--query <text>` (title+description), `--category`, `--priority` (any of these defaults scope+status to *all*). The JSON carries **`total` + `has_more`** — if `has_more` is true the result was cut by `--limit`, so raise `--limit` or narrow the query rather than concluding a todo doesn't exist. Add `--full` for every field in one call (no follow-up `view`).
 - **`jovida view <entry_id>`** — full detail of one todo (description, subtasks, reminders, …). Pass a repeating todo's `recurring_id` instead to see its repeat rule.
 - **`jovida create "<title>"`** — add one todo (**one per call**; run again for more). Give it a repeat rule to make it a repeating todo instead (returns a `recurring_id`).
 - **`jovida update <entry_id>`** — change fields of a todo; **only the fields you pass change**. `--remind` / `--subtask` replace the whole list (subtasks keep the completion of same-titled ones; for individual subtasks use `subtask` below). Pass a `recurring_id` to edit a repeating todo instead — including its repeat rule.
