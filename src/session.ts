@@ -7,7 +7,16 @@
 // refresh 死 → NotSignedIn，重跑 login。**不走 apikey/Bearer。**
 // 过渡：`loginWithToken` 直粘一枚 Sign token（开发期，无 durs 故不自动 refresh）。
 import { ApiClient, ApiError } from './api'
-import { getToken, setToken, clearCredentials, type TokenRecord } from './state'
+import {
+  getToken,
+  setToken,
+  clearCredentials,
+  getPendingLogin,
+  setPendingLogin,
+  clearPendingLogin,
+  type TokenRecord,
+  type PendingLogin
+} from './state'
 
 const AUTHORIZE = '/uc/v1/passport/device_authorize'
 const DEVICE_TOKEN = '/uc/v1/passport/device_token'
@@ -85,36 +94,108 @@ export class Session {
    * 第 2 步：按 interval 轮询直到批准 / 拒绝 / 过期 / 超时。
    * reason: ""=已批准(带 token)、AUTHORIZATION_PENDING=继续、SLOW_DOWN=加间隔、ACCESS_DENIED/EXPIRED_TOKEN=终止。
    */
+  /** 单次轮询 device_token,归类结果(批准时已落盘 token)。 */
+  private async pollAttempt(
+    deviceCode: string
+  ): Promise<
+    | { kind: 'approved'; rec: TokenRecord }
+    | { kind: 'pending' }
+    | { kind: 'slow_down' }
+    | { kind: 'denied' }
+    | { kind: 'expired' }
+  > {
+    const resp = await this.api.post<PassportResponse>(DEVICE_TOKEN, { deviceCode })
+    if (resp.token?.raw) return { kind: 'approved', rec: this.applyToken(resp) } // reason=="" 已批准
+    switch (resp.reason ?? '') {
+      case 'AUTHORIZATION_PENDING':
+      case '':
+        return { kind: 'pending' }
+      case 'SLOW_DOWN':
+        return { kind: 'slow_down' }
+      case 'ACCESS_DENIED':
+        return { kind: 'denied' }
+      case 'EXPIRED_TOKEN':
+        return { kind: 'expired' }
+      default:
+        throw new Error(`Unexpected device_token reason: ${resp.reason}`)
+    }
+  }
+
   async pollForToken(d: DeviceAuth): Promise<TokenRecord> {
     let interval = Math.max(1, d.interval || 5)
     const deadline = nowSec() + (d.expiresIn || 600)
     for (;;) {
       if (nowSec() >= deadline) throw new Error('Login timed out before approval. Run `jovida login` again.')
       await sleep(interval * 1000)
-      const resp = await this.api.post<PassportResponse>(DEVICE_TOKEN, { deviceCode: d.deviceCode })
-      if (resp.token?.raw) return this.applyToken(resp) // reason=="" 已批准
-      switch (resp.reason ?? '') {
-        case 'AUTHORIZATION_PENDING':
-        case '':
-          continue
-        case 'SLOW_DOWN':
-          interval += 5
-          continue
-        case 'ACCESS_DENIED':
-          throw new Error('Login was denied.')
-        case 'EXPIRED_TOKEN':
-          throw new Error('The login request expired. Run `jovida login` again.')
-        default:
-          throw new Error(`Unexpected device_token reason: ${resp.reason}`)
-      }
+      const r = await this.pollAttempt(d.deviceCode)
+      if (r.kind === 'approved') return r.rec
+      if (r.kind === 'slow_down') interval += 5
+      else if (r.kind === 'denied') throw new Error('Login was denied.')
+      else if (r.kind === 'expired') throw new Error('The login request expired. Run `jovida login` again.')
     }
   }
 
-  /** 设备流登录：authorize → present(展示 URL+短码 + 开浏览器) → 轮询落盘。 */
+  /** 设备流登录(阻塞,人手用):authorize → present(展示 URL+短码 + 开浏览器) → 轮询落盘。 */
   async loginWithDeviceFlow(present: (d: DeviceAuth) => void): Promise<TokenRecord> {
     const d = await this.deviceAuthorize()
     present(d)
     return this.pollForToken(d)
+  }
+
+  // ── 非阻塞两步登录(给 AI agent:发起即返回,再轮询确认) ──────────
+
+  /** 第一步:发起设备流 + 开浏览器 + 把 pending 落盘(0600),立即返回,不轮询。 */
+  async beginDeviceFlow(present: (d: DeviceAuth) => void): Promise<DeviceAuth> {
+    const d = await this.deviceAuthorize()
+    present(d)
+    setPendingLogin({
+      deviceCode: d.deviceCode,
+      interval: Math.max(1, d.interval || 5),
+      expiresAt: nowSec() + (d.expiresIn || 600),
+      userCode: d.userCode,
+      verificationUri: d.verificationUri,
+      verificationUriComplete: d.verificationUriComplete
+    })
+    return d
+  }
+
+  /**
+   * 第二步:在有限预算(budgetSec)内轮询上次 begin 的 pending,确定是否已批准。
+   * 已批准→落盘+清 pending;预算内未批准→返回 {signedIn:false} 让调用方再轮询;
+   * 无 pending→NotSignedIn;拒绝/过期→清 pending 并抛错。
+   */
+  async checkDeviceFlow(
+    budgetSec = 25
+  ): Promise<{ signedIn: true; rec: TokenRecord } | { signedIn: false; pending: PendingLogin }> {
+    const p = getPendingLogin()
+    if (!p) throw new NotSignedInError('No login in progress. Run `jovida login --no-wait` first.')
+    if (nowSec() >= p.expiresAt) {
+      clearPendingLogin()
+      throw new Error('The login request expired. Run `jovida login` again.')
+    }
+    let interval = Math.max(1, p.interval || 5)
+    const deadline = Math.min(nowSec() + budgetSec, p.expiresAt)
+    for (;;) {
+      const r = await this.pollAttempt(p.deviceCode)
+      if (r.kind === 'approved') {
+        clearPendingLogin()
+        return { signedIn: true, rec: r.rec }
+      }
+      if (r.kind === 'denied') {
+        clearPendingLogin()
+        throw new Error('Login was denied.')
+      }
+      if (r.kind === 'expired') {
+        clearPendingLogin()
+        throw new Error('The login request expired. Run `jovida login` again.')
+      }
+      if (r.kind === 'slow_down') {
+        interval += 5
+        setPendingLogin({ ...p, interval })
+      }
+      if (nowSec() + interval >= deadline) return { signedIn: false, pending: { ...p, interval } }
+      await sleep(interval * 1000)
+    }
   }
 
   // ── 过渡 / 续期 / 身份 ─────────────────────────────────────────

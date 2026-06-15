@@ -28,6 +28,8 @@ const BOOLEAN_FLAGS = new Set([
   'full',
   'all',
   'help',
+  'no-wait',
+  'check',
   'clear-when',
   'clear-remind',
   'clear-category',
@@ -82,6 +84,7 @@ const HELP = `Jovida Daily CLI
 
 Usage:
   jovida login [--json]                # device authorization: open the URL, enter the code, approve
+  jovida login --no-wait / --check     # AI-agent two-step: begin (returns at once), then poll
   jovida login --token <vita-token>    # dev-only interim: paste a signed-in vita token
   jovida logout
   jovida whoami [--json]
@@ -243,11 +246,17 @@ To stop a repeating todo, delete its recurring_id. A single occurrence cannot be
   login: `jovida login — sign in (OAuth device authorization; opens a browser)
 
 Usage:
-  jovida login [--json]
+  jovida login [--json]               # blocking: open browser, wait for approval, then return
+  jovida login --no-wait [--json]     # AI-agent step 1: open browser + return immediately (pending)
+  jovida login --check  [--json]      # AI-agent step 2: poll the pending login; repeat until signed in
   jovida login --token <vita-token>   # dev-only interim: paste a signed-in vita token
 
 The CLI prints a URL + short code and (best-effort) opens your browser; sign in
-and approve there. It cannot sign in for you.
+and approve there.
+
+For AI agents: prefer the non-blocking two-step — run \`jovida login --no-wait\`
+(opens the browser, returns at once), tell the user to approve, then poll
+\`jovida login --check\` every few seconds until it reports signed in.
 `,
   logout: `jovida logout — clear local credentials (~/.jovida/cli)
 
@@ -312,7 +321,12 @@ async function main(): Promise<void> {
 
   switch (cmd) {
     case 'login':
-      await cmdLogin(ctx, { token: str(flags.token), json })
+      await cmdLogin(ctx, {
+        token: str(flags.token),
+        noWait: flags['no-wait'] === true,
+        check: flags.check === true,
+        json
+      })
       break
     case 'logout':
       clearCredentials()
