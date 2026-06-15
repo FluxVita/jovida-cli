@@ -4,7 +4,17 @@
 
 **Jovida Daily CLI**——在终端、以及在 AI 编码 agent(Codex、Claude Code……)里捕获和管理你的 **Jovida Daily** 待办。随仓附带一份 agent **skill**,让 AI 知道何时、如何使用它。
 
-> **如果你是正在安装它的 AI agent:** 按 **[安装](#安装)** 顺序执行三步。**第 2 步**:若本机存在多个受支持 agent,告诉用户 skill 将为它们全部安装并确认——用户若只想装一个,用 `--agent <name>`。**第 3 步**:**你自己替用户登录——别把命令甩给他**:跑 `jovida login --no-wait`(打开浏览器、立即返回),让用户在浏览器里批准,然后每隔几秒轮询 `jovida login --check` 直到它报告已登录;用 `jovida whoami` 确认。(仅当开不了浏览器——远程 / headless 会话——才让用户自己跑 `jovida login`。)**登录成功前,别认为安装完成、也别去操作待办。** 此后按 **[`SKILL.md`](./SKILL.md)** 驱动 CLI;之后任何命令以 `2`(`NOT_SIGNED_IN`)退出,重新跑 `jovida login`。
+> **AI agent:用户让你安装时,下面每一步都**你自己**跑——别把命令甩给用户,也别装完就停。用户唯一要做的是在浏览器里点「允许」。**
+>
+> 1. `npm i -g @fluxvita/jovida-cli`
+> 2. `jovida skill install` —— 装进所有探测到的 agent(只装一个用 `--agent <name>`)。若本机有多个 agent,告诉用户你将为它们全部安装。
+> 3. **替用户登录 —— 这些你自己跑,**别**让用户去跑 `jovida login`:**
+>    a. `jovida login --no-wait` —— 打开用户浏览器并**立即返回**(不阻塞)。
+>    b. 让用户在那个浏览器里登录并批准。
+>    c. 每隔几秒轮询 `jovida login --check`,直到它输出 `signed_in` —— 遇非零退出(`denied` / `expired`)即停;请求约 10 分钟后过期。
+> 4. `jovida whoami` —— 确认。验证成功前别认为安装完成。
+>
+> 仅当开不了浏览器(远程 / headless 会话)才让用户自己跑 `jovida login`。之后按 **[`SKILL.md`](./SKILL.md)** 驱动 CLI;后续命令以 `2`(`NOT_SIGNED_IN`)退出,用同样方式再登录一次。
 
 > **内测中。** Jovida Daily 处于私有内测;CLI 需要 Jovida 账号(无匿名模式)。
 

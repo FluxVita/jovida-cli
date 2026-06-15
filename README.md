@@ -4,7 +4,17 @@
 
 The **Jovida Daily CLI** — capture and manage your **Jovida Daily** todos from the terminal and from AI coding agents (Codex, Claude Code, …). It ships with an agent **skill** so your AI knows when and how to use it.
 
-> **If you are the AI agent setting this up:** do **[Setup](#setup)** in order, all three steps. In **step 2**, if more than one supported agent is present on the machine, tell the user the skill will be installed for all of them and confirm — install only one with `--agent <name>` if they prefer. In **step 3**, **sign the user in yourself — don't hand them the command**: run `jovida login --no-wait` (opens the browser, returns immediately), tell the user to approve in it, then poll `jovida login --check` every few seconds until it reports signed in; confirm with `jovida whoami`. (Only if no browser can open — a remote/headless session — ask the user to run `jovida login` themselves.) Don't consider setup finished — or manage todos — until sign-in succeeds. After that, drive the CLI per **[`SKILL.md`](./SKILL.md)**; if any command later exits `2` (`NOT_SIGNED_IN`), run `jovida login` again.
+> **AI agent: if a user asks you to install this, run every step below YOURSELF — don't hand the commands to the user, and don't stop after installing. The user's only action is clicking _approve_ in their browser.**
+>
+> 1. `npm i -g @fluxvita/jovida-cli`
+> 2. `jovida skill install` — installs into every detected agent (`--agent <name>` for just one). If several agents are present, tell the user you're installing for all of them.
+> 3. **Sign the user in — run these yourself, do NOT tell the user to run `jovida login`:**
+>    a. `jovida login --no-wait` — opens the user's browser and returns immediately (it does not block).
+>    b. Tell the user to sign in and approve in that browser.
+>    c. Poll `jovida login --check` every few seconds until it prints `signed_in` — stop on a non-zero exit (`denied` / `expired`); the request expires after ~10 min.
+> 4. `jovida whoami` — confirm. Setup isn't done until this succeeds.
+>
+> Only if no browser can open (a remote/headless session) ask the user to run `jovida login` themselves. Then drive the CLI per **[`SKILL.md`](./SKILL.md)**; on a later exit `2` (`NOT_SIGNED_IN`), sign them in again the same way.
 
 > **Beta.** Jovida Daily is in private beta; the CLI requires a Jovida account (no anonymous mode).
 
