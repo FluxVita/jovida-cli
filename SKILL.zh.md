@@ -16,7 +16,7 @@ allowed-tools: Bash(jovida:*)
 > **登录是必须的(无匿名模式),而且替用户登录是你的活——你来做,别把命令甩给用户。** 不确定是否已登录就先跑 `jovida whoami`;若未登录(或任何命令以 `2`/`NOT_SIGNED_IN` 退出),走非阻塞两步:
 >  1. 跑 `jovida login --no-wait`——它打开用户的浏览器并**立即返回**(给出短码+URL,**不**阻塞)。
 >  2. 告诉用户在刚弹开的浏览器里登录并批准。
->  3. 每隔几秒轮询 `jovida login --check`(如 `sleep 3; jovida login --check`),直到它报告已登录;用 `jovida whoami` 确认。
+>  3. 每隔几秒轮询 `jovida login --check`(如 `sleep 3; jovida login --check`),直到它**报告已登录或报错**——遇非零退出(`denied` / `expired`)即停;请求约 10 分钟后过期。成功后用 `jovida whoami` 确认。
 >
 > 仅当浏览器开不了(远程 / headless 会话)才回退为让用户自己跑 `jovida login` 并批准。无论哪种,别默默丢掉任务。**绝不把 token 写进命令行。**
 

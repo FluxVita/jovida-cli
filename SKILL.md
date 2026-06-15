@@ -14,7 +14,7 @@ This skill teaches the *semantics* — when to act, which command, how to compos
 > **Sign-in is required (no anonymous mode), and signing the user in is YOUR job — do it, don't hand the command to the user.** If unsure whether they're signed in, run `jovida whoami` first. If they aren't (or any command exits `2`, `NOT_SIGNED_IN`), use the non-blocking two-step:
 >  1. Run `jovida login --no-wait` — it opens the user's browser and returns immediately with a short code + URL (it does **not** block).
 >  2. Tell the user to sign in and approve in the browser that just opened.
->  3. Poll `jovida login --check` every few seconds (e.g. `sleep 3; jovida login --check`) until it reports signed in; confirm with `jovida whoami`.
+>  3. Poll `jovida login --check` every few seconds (e.g. `sleep 3; jovida login --check`) until it reports signed in **or errors** — stop on a non-zero exit (`denied` / `expired`); the request expires after ~10 minutes. On success, confirm with `jovida whoami`.
 >
 > Only if no browser can open (a remote/headless session) fall back to asking the user to run `jovida login` themselves and approve. Either way, don't silently drop the task. **Never pass a token on the command line.**
 
