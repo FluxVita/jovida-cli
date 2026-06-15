@@ -4,7 +4,7 @@
 
 **Jovida Daily CLI**——在终端、以及在 AI 编码 agent(Codex、Claude Code……)里捕获和管理你的 **Jovida Daily** 待办。随仓附带一份 agent **skill**,让 AI 知道何时、如何使用它。
 
-> **如果你是正在安装它的 AI agent:** 按 **[安装](#安装)** 顺序执行三步。**第 2 步**:若本机存在多个受支持 agent(`~/.codex`、`~/.claude`),告诉用户 skill 将为它们全部安装并确认——用户若只想装一个,用 `--agent <codex|claude>`。**第 3 步**:**替用户运行 `jovida login`**——浏览器会打开让他登录并批准;告诉他要做什么,等命令结束,再用 `jovida whoami` 验证。(若开不了浏览器——远程 / headless 会话——则让用户自己运行 `jovida login` 并批准。)**登录成功前,别认为安装完成、也别去操作待办。** 此后按 **[`SKILL.md`](./SKILL.md)** 驱动 CLI;之后任何命令以 `2`(`NOT_SIGNED_IN`)退出,重新跑 `jovida login`。
+> **如果你是正在安装它的 AI agent:** 按 **[安装](#安装)** 顺序执行三步。**第 2 步**:若本机存在多个受支持 agent,告诉用户 skill 将为它们全部安装并确认——用户若只想装一个,用 `--agent <name>`。**第 3 步**:**替用户运行 `jovida login`**——浏览器会打开让他登录并批准;告诉他要做什么,等命令结束,再用 `jovida whoami` 验证。(若开不了浏览器——远程 / headless 会话——则让用户自己运行 `jovida login` 并批准。)**登录成功前,别认为安装完成、也别去操作待办。** 此后按 **[`SKILL.md`](./SKILL.md)** 驱动 CLI;之后任何命令以 `2`(`NOT_SIGNED_IN`)退出,重新跑 `jovida login`。
 
 > **内测中。** Jovida Daily 处于私有内测;CLI 需要 Jovida 账号(无匿名模式)。
 
@@ -29,7 +29,7 @@ npm i -g @fluxvita/jovida-cli
 jovida skill install
 ```
 
-把随包的 `SKILL.md`(与 CLI 同版本)拷进**所有探测到**的 agent(`~/.codex/skills/jovida-cli/`、`~/.claude/skills/jovida-cli/`)。只想装一个用 `jovida skill install --agent codex`(或 `--agent claude`;可重复)。加 `--all` 可对所有已知 agent 安装(即使未探测到)。(备选:`npx skills add FluxVita/jovida-cli`。)
+把随包的 `SKILL.md`(与 CLI 同版本)拷进**所有探测到**的 agent。支持:Codex、Claude Code、Gemini CLI、Cursor、Windsurf、Continue、OpenCode、Goose、Qwen Code、Crush、KiloCode、Aider、GitHub Copilot(各装在 `<agent 目录>/skills/jovida-cli/`)。只想装一个用 `jovida skill install --agent codex`(可重复 / 逗号分隔;完整名单跑 `jovida help skill`)。加 `--all` 可对所有已知 agent 安装(即使未探测到)。(备选——覆盖更多 agent,但它从仓库最新拉 skill、不保证与你装的 CLI 版本一致:`npx skills add FluxVita/jovida-cli`。)
 
 **3. 登录**(交互式浏览器流——AI agent 可代跑并引导你完成):
 

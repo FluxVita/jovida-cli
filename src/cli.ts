@@ -85,7 +85,7 @@ Usage:
   jovida login --token <vita-token>    # dev-only interim: paste a signed-in vita token
   jovida logout
   jovida whoami [--json]
-  jovida skill install [--agent codex|claude]   # copy the bundled skill into agents (all detected, or one)
+  jovida skill install [--agent <name>]   # copy the bundled skill into agents (all detected, or one; see: jovida help skill)
 
   jovida create "<title>" [--when <ISO>] [--priority none|low|medium|high]
                           [--remind <ISO> ...] [--category <s>] [--desc <s>]
@@ -106,7 +106,7 @@ Usage:
 
 Output: JSON is emitted automatically when stdout is not a TTY (use --json/--no-json to force).
 Exit:   0 ok · 1 usage · 2 not signed in · 3 backend/network · 4 not found
-Env:    JOVIDA_API_URL=<url> (default https://tapi.jovida.ai) · JOVIDA_HOME=<dir> (default ~/.jovida)
+Env:    JOVIDA_API_URL=<url> (default https://tapi.jovida.ai) · JOVIDA_HOME=<dir> (default ~/.jovida/cli)
         JOVIDA_NO_UPDATE_CHECK=1 to silence the "update available" notice
 
 Run \`jovida <command> --help\` for details on a command (e.g. jovida create --help).
@@ -249,7 +249,7 @@ Usage:
 The CLI prints a URL + short code and (best-effort) opens your browser; sign in
 and approve there. It cannot sign in for you.
 `,
-  logout: `jovida logout — clear local credentials (~/.jovida)
+  logout: `jovida logout — clear local credentials (~/.jovida/cli)
 
 Local only — it removes the stored token from this machine; it does not revoke the
 session server-side.
@@ -261,9 +261,12 @@ Usage:
 `,
   skill: `jovida skill — install/update the agent skill from the bundled SKILL.md
 
+Supported agents: codex, claude, gemini, cursor, windsurf, continue, opencode,
+                  goose, qwen, crush, kilocode, aider, copilot (→ <dir>/skills/jovida-cli/SKILL.md)
+
 Usage:
-  jovida skill install                   # copy SKILL.md into ALL detected agents (~/.codex, ~/.claude → skills/jovida-cli/)
-  jovida skill install --agent codex     # install for one agent only (codex | claude); repeatable
+  jovida skill install                   # copy SKILL.md into ALL detected agents
+  jovida skill install --agent codex     # install for one agent only (repeatable / comma-separated)
   jovida skill update                    # same as install (re-copy; keeps the skill in lockstep with the CLI version)
   jovida skill install --all             # install for all known agents even if not detected
 `

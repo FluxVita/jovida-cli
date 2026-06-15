@@ -4,7 +4,7 @@
 
 The **Jovida Daily CLI** — capture and manage your **Jovida Daily** todos from the terminal and from AI coding agents (Codex, Claude Code, …). It ships with an agent **skill** so your AI knows when and how to use it.
 
-> **If you are the AI agent setting this up:** do **[Setup](#setup)** in order, all three steps. In **step 2**, if more than one supported agent is present on the machine (`~/.codex`, `~/.claude`), tell the user the skill will be installed for all of them and confirm — install only one with `--agent <codex|claude>` if they prefer. In **step 3**, **run `jovida login` for the user**: a browser opens to sign in and approve; tell them what to do and wait for the command to finish, then verify with `jovida whoami`. (If no browser can open — a remote/headless session — ask the user to run `jovida login` themselves and approve.) Don't consider setup finished — or manage todos — until sign-in succeeds. After that, drive the CLI per **[`SKILL.md`](./SKILL.md)**; if any command later exits `2` (`NOT_SIGNED_IN`), run `jovida login` again.
+> **If you are the AI agent setting this up:** do **[Setup](#setup)** in order, all three steps. In **step 2**, if more than one supported agent is present on the machine, tell the user the skill will be installed for all of them and confirm — install only one with `--agent <name>` if they prefer. In **step 3**, **run `jovida login` for the user**: a browser opens to sign in and approve; tell them what to do and wait for the command to finish, then verify with `jovida whoami`. (If no browser can open — a remote/headless session — ask the user to run `jovida login` themselves and approve.) Don't consider setup finished — or manage todos — until sign-in succeeds. After that, drive the CLI per **[`SKILL.md`](./SKILL.md)**; if any command later exits `2` (`NOT_SIGNED_IN`), run `jovida login` again.
 
 > **Beta.** Jovida Daily is in private beta; the CLI requires a Jovida account (no anonymous mode).
 
@@ -29,7 +29,7 @@ npm i -g @fluxvita/jovida-cli
 jovida skill install
 ```
 
-Copies the bundled `SKILL.md` (kept in lockstep with the CLI version) into **all detected** agents (`~/.codex/skills/jovida-cli/`, `~/.claude/skills/jovida-cli/`). To install for just one, use `jovida skill install --agent codex` (or `--agent claude`; repeatable). Add `--all` to install for all known agents even if not detected. (Alternative: `npx skills add FluxVita/jovida-cli`.)
+Copies the bundled `SKILL.md` (kept in lockstep with the CLI version) into **all detected** agents. Supported: Codex, Claude Code, Gemini CLI, Cursor, Windsurf, Continue, OpenCode, Goose, Qwen Code, Crush, KiloCode, Aider, GitHub Copilot (each at `<agent-dir>/skills/jovida-cli/`). To install for just one, use `jovida skill install --agent codex` (repeatable / comma-separated; run `jovida help skill` for the full name list). Add `--all` to install for all known agents even if not detected. (Alternative — covers more agents but pulls the skill from the repo's latest, not your installed version: `npx skills add FluxVita/jovida-cli`.)
 
 **3. Sign in** (interactive browser flow — an AI agent can run this and guide you through it):
 

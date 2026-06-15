@@ -1,11 +1,11 @@
-// 本地状态:~/.jovida/(可经 JOVIDA_HOME 覆盖)。无待办库——storeless。
-// credentials.json(token,0600)+ state.json(deviceId / lastServerVersion)。
+// 本地状态:~/.jovida/cli/(`~/.jovida` 留作品牌命名空间,CLI 占 cli 子目录;可经 JOVIDA_HOME 覆盖)。
+// 无待办库——storeless。credentials.json(token,0600)+ state.json(deviceId / lastServerVersion)。
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { deriveDeviceId } from './machine-id'
 
-const DIR = process.env['JOVIDA_HOME'] ?? join(homedir(), '.jovida')
+const DIR = process.env['JOVIDA_HOME'] ?? join(homedir(), '.jovida', 'cli')
 const CRED = join(DIR, 'credentials.json')
 const STATE = join(DIR, 'state.json')
 

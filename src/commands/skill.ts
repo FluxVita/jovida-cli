@@ -4,9 +4,21 @@ import { existsSync, mkdirSync, copyFileSync } from 'node:fs'
 
 // 已知 agent → skill 安装位置 <home>/<dir>/skills/jovida-cli/SKILL.md。
 // keys = `--agent` 接受的定向名(小写、含别名);name = 展示名;dir = home 下子目录。
+// 目录约定对齐 `skills` CLI(npx skills add)所维护的注册表;Amp/Cline/Antigravity 约定未稳定,暂未收录。
 const AGENTS = [
   { keys: ['codex'], name: 'Codex', dir: '.codex' },
-  { keys: ['claude', 'claude-code', 'claudecode'], name: 'Claude Code', dir: '.claude' }
+  { keys: ['claude', 'claude-code', 'claudecode'], name: 'Claude Code', dir: '.claude' },
+  { keys: ['gemini', 'gemini-cli'], name: 'Gemini CLI', dir: '.gemini' },
+  { keys: ['cursor'], name: 'Cursor', dir: '.cursor' },
+  { keys: ['windsurf', 'codeium'], name: 'Windsurf', dir: '.codeium/windsurf' },
+  { keys: ['continue'], name: 'Continue', dir: '.continue' },
+  { keys: ['opencode'], name: 'OpenCode', dir: '.opencode' },
+  { keys: ['goose'], name: 'Goose', dir: '.goose' },
+  { keys: ['qwen', 'qwen-code'], name: 'Qwen Code', dir: '.qwen' },
+  { keys: ['crush'], name: 'Crush', dir: '.config/crush' },
+  { keys: ['kilocode', 'kilo'], name: 'KiloCode', dir: '.kilocode' },
+  { keys: ['aider'], name: 'Aider', dir: '.aider-desk' },
+  { keys: ['copilot', 'github-copilot'], name: 'GitHub Copilot', dir: '.copilot' }
 ]
 const SKILL_NAME = 'jovida-cli'
 
@@ -69,7 +81,7 @@ export function cmdSkill(sub: string | undefined, a: SkillArgs): void {
     return
   }
   if (installed.length === 0) {
-    console.log('No agents detected (~/.codex or ~/.claude). Re-run with --all to install for all known agents.')
+    console.log('No supported agents detected. Re-run with --all to install for all known agents.')
     return
   }
   console.log('✓ skill installed/updated:')
