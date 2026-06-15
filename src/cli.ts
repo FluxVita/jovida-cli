@@ -20,7 +20,7 @@ import { maybeNotifyUpdate } from './lib/update-check'
 const VERSION: string = require('../package.json').version
 
 // 可重复的值 flag（收集成数组）。其余值 flag 取最后一次。
-const REPEATABLE = new Set(['remind', 'subtask'])
+const REPEATABLE = new Set(['remind', 'subtask', 'agent'])
 // 合法的无值(布尔)flag。其余 flag 缺值 = 用法错(防 `--remind`(漏值)被静默当 true→丢弃)。
 const BOOLEAN_FLAGS = new Set([
   'json',
@@ -85,7 +85,7 @@ Usage:
   jovida login --token <vita-token>    # dev-only interim: paste a signed-in vita token
   jovida logout
   jovida whoami [--json]
-  jovida skill install                 # copy the bundled skill into detected agents (Codex/Claude)
+  jovida skill install [--agent codex|claude]   # copy the bundled skill into agents (all detected, or one)
 
   jovida create "<title>" [--when <ISO>] [--priority none|low|medium|high]
                           [--remind <ISO> ...] [--category <s>] [--desc <s>]
@@ -262,9 +262,10 @@ Usage:
   skill: `jovida skill — install/update the agent skill from the bundled SKILL.md
 
 Usage:
-  jovida skill install         # copy SKILL.md into detected agents (~/.codex, ~/.claude → skills/jovida-cli/)
-  jovida skill update          # same (re-copy; keeps the skill in lockstep with the CLI version)
-  jovida skill install --all   # install for all known agents even if not detected
+  jovida skill install                   # copy SKILL.md into ALL detected agents (~/.codex, ~/.claude → skills/jovida-cli/)
+  jovida skill install --agent codex     # install for one agent only (codex | claude); repeatable
+  jovida skill update                    # same as install (re-copy; keeps the skill in lockstep with the CLI version)
+  jovida skill install --all             # install for all known agents even if not detected
 `
 }
 
@@ -318,7 +319,7 @@ async function main(): Promise<void> {
       await cmdWhoami(ctx, { json })
       break
     case 'skill':
-      cmdSkill(positionals[0], { all: flags.all === true, json })
+      cmdSkill(positionals[0], { all: flags.all === true, agents: arr(flags.agent), json })
       break
     case 'create':
       await cmdCreate(ctx, {

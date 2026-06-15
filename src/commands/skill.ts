@@ -3,9 +3,10 @@ import { join, resolve } from 'node:path'
 import { existsSync, mkdirSync, copyFileSync } from 'node:fs'
 
 // 已知 agent → skill 安装位置 <home>/<dir>/skills/jovida-cli/SKILL.md。
+// keys = `--agent` 接受的定向名(小写、含别名);name = 展示名;dir = home 下子目录。
 const AGENTS = [
-  { name: 'Codex', dir: '.codex' },
-  { name: 'Claude Code', dir: '.claude' }
+  { keys: ['codex'], name: 'Codex', dir: '.codex' },
+  { keys: ['claude', 'claude-code', 'claudecode'], name: 'Claude Code', dir: '.claude' }
 ]
 const SKILL_NAME = 'jovida-cli'
 
@@ -16,12 +17,30 @@ function skillSource(): string {
 
 export interface SkillArgs {
   all?: boolean // 即使未检测到 agent 也装(给所有已知 agent 建目录)
+  agents?: string[] // `--agent` 定向:只装这些 agent(名称见 AGENTS.keys);不传 = 全部已知 agent
   json?: boolean
+}
+
+/** 把 `--agent` 传入的名字(可含别名、逗号分隔)解析为 AGENTS 子集;未知名报错。 */
+function selectAgents(names: string[] | undefined): typeof AGENTS {
+  if (!names || names.length === 0) return AGENTS
+  const wanted = names.flatMap((n) => n.split(',')).map((n) => n.trim().toLowerCase()).filter(Boolean)
+  const picked: typeof AGENTS = []
+  for (const w of wanted) {
+    const ag = AGENTS.find((a) => a.keys.includes(w))
+    if (!ag) {
+      const known = AGENTS.map((a) => a.keys[0]).join(', ')
+      throw new Error(`unknown agent "${w}" — known: ${known}`)
+    }
+    if (!picked.includes(ag)) picked.push(ag)
+  }
+  return picked
 }
 
 /**
  * 把随 CLI 包发布的 SKILL.md 装 / 更新进 agent 的 skill 目录。
  * 与 CLI 同一个 npm 版本 → 不漂移。`install` 与 `update` 行为相同(覆盖)。
+ * 默认装进所有已检测到的 agent;`--agent codex|claude` 只装指定的;`--all` 即使未检测到也建目录。
  */
 export function cmdSkill(sub: string | undefined, a: SkillArgs): void {
   if (sub && sub !== 'install' && sub !== 'update') {
@@ -30,9 +49,10 @@ export function cmdSkill(sub: string | undefined, a: SkillArgs): void {
   const src = skillSource()
   if (!existsSync(src)) throw new Error(`bundled SKILL.md not found at ${src}`)
 
+  const targets = selectAgents(a.agents)
   const installed: string[] = []
   const skipped: string[] = []
-  for (const ag of AGENTS) {
+  for (const ag of targets) {
     const home = join(homedir(), ag.dir)
     if (!a.all && !existsSync(home)) {
       skipped.push(ag.name)

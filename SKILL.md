@@ -11,7 +11,7 @@ Help the user capture and manage their **Jovida Daily** todos by shelling out to
 This skill teaches the *semantics* — when to act, which command, how to compose them. For the **exact flags** of any command, run `jovida <command> --help` (e.g. `jovida create --help`); that is the source of truth and stays in lockstep with the installed version. Don't rely on a flag this skill doesn't name without checking `--help` first.
 
 > **If `jovida` isn't found**, the CLI isn't installed here — tell the user to install it (see the jovida-cli README); don't pretend you tracked anything.
-> **Sign-in is required, and it's the user's step.** No anonymous mode. You **cannot** sign in for them (interactive browser) and **must not** skip it. If unsure they're signed in, run `jovida whoami` first. If `whoami` or any command exits `2` (`NOT_SIGNED_IN`), **stop, ask the user to run `jovida login`, and wait for their confirmation before retrying** — don't silently drop the task or claim you can't help.
+> **Sign-in is required (no anonymous mode).** If unsure whether they're signed in, run `jovida whoami` first. If they aren't (or any command exits `2`, `NOT_SIGNED_IN`): **run `jovida login` for them** — it opens a browser; tell the user a browser will open to sign in and approve, then wait for the command to finish and confirm with `jovida whoami`. If the browser can't open (a remote/headless session, or you can't surface the code to them), fall back to asking the user to run `jovida login` in their own terminal and approve, then continue. Either way, don't silently drop the task. **Never pass a token on the command line.**
 
 ## Core mental model — read this first
 
@@ -47,7 +47,7 @@ Semantics below; exact flags via `jovida <cmd> --help`.
 - **`jovida reopen <id> [<id> …]`** — reopen completed todos (the inverse of `complete`).
 - **`jovida subtask check|uncheck|add|rm <entry_id> …`** — check / uncheck / add / remove an individual subtask (address it by its id or its 1-based number from `view`).
 - **`jovida delete <id> [<id> …]`** — permanently remove (several ids in one call; **no undo**). To stop a routine, delete its `recurring_id` — you can't delete a single occurrence.
-- **`jovida whoami` / `login` / `logout`** — session. `login` is the user's interactive step.
+- **`jovida whoami` / `login` / `logout`** — session. `login` runs the browser device flow: run it for the user and tell them to approve in the browser (fall back to asking them to run it if no browser can open).
 
 ## Workflows — composing the commands
 
@@ -64,6 +64,6 @@ Map the user's intent to a sequence; read before any change.
 ## Discipline
 
 - Quote the title and any value containing spaces. Keep titles/descriptions **single-line plain text** — newlines and shell metacharacters passed as arguments get mangled.
-- **Never put a token in a command** (it lands in shell history / process listings). Signing in is the user's interactive step.
+- **Never put a token in a command** (it lands in shell history / process listings) — `jovida login` uses an interactive browser flow, there's no token to paste.
 - `delete` is idempotent: it reports success even for an id that doesn't exist (it won't fail like `complete`/`reopen` do on a missing id). So don't infer a todo existed just because `delete` "succeeded".
-- Don't claim success if a command exited non-zero — read the error and tell the user (exit `2` → ask them to `jovida login`).
+- Don't claim success if a command exited non-zero — read the error and tell the user (exit `2` → run `jovida login` for them, or ask them to, per the sign-in note up top).
