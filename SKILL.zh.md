@@ -13,12 +13,7 @@ allowed-tools: Bash(jovida:*)
 本 skill 教的是**语义**——何时动手、用哪个命令、如何组合。某命令的**确切参数**请跑 `jovida <命令> --help`(如 `jovida create --help`);那才是参数真相,且与已安装版本同步。本 skill 没提到的参数,先看 `--help` 再用。
 
 > **若 `jovida` 命令不存在**,说明本机没装 CLI——提醒用户安装(见 jovida-cli README);别假装记下了什么。
-> **登录是必须的(无匿名模式),而且替用户登录是你的活——你来做,别把命令甩给用户。** 不确定是否已登录就先跑 `jovida whoami`;若未登录(或任何命令以 `2`/`NOT_SIGNED_IN` 退出),走非阻塞两步:
->  1. 跑 `jovida login --no-wait`——它打开用户的浏览器并**立即返回**(给出短码+URL,**不**阻塞)。
->  2. 告诉用户在刚弹开的浏览器里登录并批准。
->  3. 每隔几秒轮询 `jovida login --check`(如 `sleep 3; jovida login --check`),直到它**报告已登录或报错**——遇非零退出(`denied` / `expired`)即停;请求约 10 分钟后过期。成功后用 `jovida whoami` 确认。
->
-> 仅当浏览器开不了(远程 / headless 会话)才回退为让用户自己跑 `jovida login` 并批准。无论哪种,别默默丢掉任务。**绝不把 token 写进命令行。**
+> **登录是必须的(无匿名模式)。** 不确定是否已登录就先跑 `jovida whoami`(exit `2` = 未登录);若未登录(或任何命令以 `2`/`NOT_SIGNED_IN` 退出):用 `jovida login` 登录——它打开用户浏览器、**自动轮询**,用户批准后**自己完成**(再用 `jovida whoami` 确认)。能跑就替用户跑;**若你不自动跑,要主动问用户「要不要我帮你登录」**——别直接甩命令让用户自己跑、也别默默跳过。仅当开不了浏览器(远程 / headless 会话)才让用户自己跑 `jovida login`。**绝不把 token 写进命令行。**
 
 ## 核心心智模型——先读这段
 
@@ -54,7 +49,7 @@ allowed-tools: Bash(jovida:*)
 - **`jovida reopen <id> [<id> …]`** —— 重新打开已完成的待办(`complete` 的逆操作)。
 - **`jovida subtask check|uncheck|add|rm <entry_id> …`** —— 勾选/取消/新增/删除单条子任务(按 id 或 `view` 里的 1-based 序号寻址)。
 - **`jovida delete <id> [<id> …]`** —— 永久删除(一次传多个 id;**无撤回**)。要停掉一条例行,删它的 `recurring_id`——不能删单次发生。
-- **`jovida whoami` / `login` / `logout`** —— 会话。**你自己**用非阻塞两步登录(`jovida login --no-wait` 再轮询 `jovida login --check`)——见开头登录说明;仅当开不了浏览器才回退为让用户自己跑。
+- **`jovida whoami` / `login` / `logout`** —— 会话。`jovida login` 打开浏览器并自动轮询到用户批准(不用再做别的);开不了浏览器则让用户自己跑。
 
 ## Workflows——如何组合命令
 
@@ -73,4 +68,4 @@ allowed-tools: Bash(jovida:*)
 - 标题及含空格的值要加引号。标题/描述保持**单行纯文本**——经参数传换行或 shell 特殊字符会被破坏。
 - **绝不把 token 写进命令**(会进 shell history / 进程列表)——`jovida login` 走交互式浏览器流,没有 token 要粘。
 - `delete` 是幂等的:对不存在的 id 也报成功(不像 `complete`/`reopen` 会因 id 不存在而失败)。所以别因为 `delete`「成功」就断定那条待办曾经存在。
-- 命令非零退出就别谎称成功——读错误并告知用户(exit `2` → 你自己走两步登录,见开头登录说明)。
+- 命令非零退出就别谎称成功——读错误并告知用户(exit `2` → 跑 `jovida login`,或让用户跑)。

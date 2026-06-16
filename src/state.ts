@@ -8,7 +8,6 @@ import { deriveDeviceId } from './machine-id'
 const DIR = process.env['JOVIDA_HOME'] ?? join(homedir(), '.jovida', 'cli')
 const CRED = join(DIR, 'credentials.json')
 const STATE = join(DIR, 'state.json')
-const PENDING = join(DIR, 'login-pending.json')
 
 /** Sign 态 vita token 记录（单 JWT：raw 内含 access/refresh 双窗，durs 用于推算续期时机）。 */
 export interface TokenRecord {
@@ -88,34 +87,6 @@ function readCreds(): Credentials | null {
 function writeCreds(c: Credentials): void {
   ensureDir()
   writeFileSync(CRED, JSON.stringify(c), { mode: 0o600 })
-}
-
-/**
- * 非阻塞两步登录的中间态(`login --no-wait` 写、`login --check` 读)。
- * deviceCode 是短时机密——0600、批准/过期/失败后立即清除;绝不进 argv。
- */
-export interface PendingLogin {
-  deviceCode: string
-  interval: number // 轮询间隔(秒)
-  expiresAt: number // 设备码过期 Unix 秒
-  userCode: string
-  verificationUri: string
-  verificationUriComplete: string
-}
-
-export function getPendingLogin(): PendingLogin | null {
-  return readJson<PendingLogin>(PENDING)
-}
-export function setPendingLogin(p: PendingLogin): void {
-  ensureDir()
-  writeFileSync(PENDING, JSON.stringify(p), { mode: 0o600 })
-}
-export function clearPendingLogin(): void {
-  try {
-    rmSync(PENDING)
-  } catch {
-    /* 不存在即忽略 */
-  }
 }
 
 export function getToken(): TokenRecord | null {

@@ -8,10 +8,7 @@ The **Jovida Daily CLI** — capture and manage your **Jovida Daily** todos from
 >
 > 1. `npm i -g @fluxvita/jovida-cli`
 > 2. `jovida skill install` — installs into every detected agent (`--agent <name>` for just one). If several agents are present, tell the user you're installing for all of them.
-> 3. **Sign the user in — run these yourself, do NOT tell the user to run `jovida login`:**
->    a. `jovida login --no-wait` — opens the user's browser and returns immediately (it does not block).
->    b. Tell the user to sign in and approve in that browser.
->    c. Poll `jovida login --check` every few seconds until it prints `signed_in` — stop on a non-zero exit (`denied` / `expired`); the request expires after ~10 min.
+> 3. `jovida login` — opens the user's browser, **auto-polls**, and finishes on its own once they approve. Run it for the user if you can; if you won't run it automatically, **ask the user whether you should run it for them** (don't just tell them to run it). Only if no browser can open (remote/headless) ask the user to run it themselves.
 > 4. `jovida whoami` — confirm. Setup isn't done until this succeeds.
 >
 > Only if no browser can open (a remote/headless session) ask the user to run `jovida login` themselves. Then drive the CLI per **[`SKILL.md`](./SKILL.md)**; on a later exit `2` (`NOT_SIGNED_IN`), sign them in again the same way.
@@ -47,9 +44,7 @@ Copies the bundled `SKILL.md` (kept in lockstep with the CLI version) into **all
 jovida login          # opens a browser; sign in and approve the CLI
 ```
 
-Verify with `jovida whoami`. From here the CLI stays signed in (auto-renews) until the session is revoked.
-
-> *AI agents: don't make the user run this — drive it yourself with the non-blocking two-step `jovida login --no-wait`, then poll `jovida login --check` until signed in (see the note at the top).*
+Verify with `jovida whoami`. From here the CLI stays signed in (auto-renews) until the session is revoked. (`jovida login` auto-polls and finishes once you approve in the browser — nothing else to run.)
 
 ## Updating
 

@@ -7,16 +7,7 @@
 // refresh 死 → NotSignedIn，重跑 login。**不走 apikey/Bearer。**
 // 过渡：`loginWithToken` 直粘一枚 Sign token（开发期，无 durs 故不自动 refresh）。
 import { ApiClient, ApiError } from './api'
-import {
-  getToken,
-  setToken,
-  clearCredentials,
-  getPendingLogin,
-  setPendingLogin,
-  clearPendingLogin,
-  type TokenRecord,
-  type PendingLogin
-} from './state'
+import { getToken, setToken, clearCredentials, type TokenRecord } from './state'
 
 const AUTHORIZE = '/uc/v1/passport/device_authorize'
 const DEVICE_TOKEN = '/uc/v1/passport/device_token'
@@ -135,67 +126,11 @@ export class Session {
     }
   }
 
-  /** 设备流登录(阻塞,人手用):authorize → present(展示 URL+短码 + 开浏览器) → 轮询落盘。 */
+  /** 设备流登录(阻塞,自动轮询):authorize → present(展示 URL+短码 + 开浏览器) → 轮询落盘。 */
   async loginWithDeviceFlow(present: (d: DeviceAuth) => void): Promise<TokenRecord> {
     const d = await this.deviceAuthorize()
     present(d)
     return this.pollForToken(d)
-  }
-
-  // ── 非阻塞两步登录(给 AI agent:发起即返回,再轮询确认) ──────────
-
-  /** 第一步:发起设备流 + 开浏览器 + 把 pending 落盘(0600),立即返回,不轮询。 */
-  async beginDeviceFlow(present: (d: DeviceAuth) => void): Promise<DeviceAuth> {
-    const d = await this.deviceAuthorize()
-    present(d)
-    setPendingLogin({
-      deviceCode: d.deviceCode,
-      interval: Math.max(1, d.interval || 5),
-      expiresAt: nowSec() + (d.expiresIn || 600),
-      userCode: d.userCode,
-      verificationUri: d.verificationUri,
-      verificationUriComplete: d.verificationUriComplete
-    })
-    return d
-  }
-
-  /**
-   * 第二步:在有限预算(budgetSec)内轮询上次 begin 的 pending,确定是否已批准。
-   * 已批准→落盘+清 pending;预算内未批准→返回 {signedIn:false} 让调用方再轮询;
-   * 无 pending→NotSignedIn;拒绝/过期→清 pending 并抛错。
-   */
-  async checkDeviceFlow(
-    budgetSec = 25
-  ): Promise<{ signedIn: true; rec: TokenRecord } | { signedIn: false; pending: PendingLogin }> {
-    const p = getPendingLogin()
-    if (!p) throw new NotSignedInError('No login in progress. Run `jovida login --no-wait` first.')
-    if (nowSec() >= p.expiresAt) {
-      clearPendingLogin()
-      throw new Error('The login request expired. Run `jovida login` again.')
-    }
-    let interval = Math.max(1, p.interval || 5)
-    const deadline = Math.min(nowSec() + budgetSec, p.expiresAt)
-    for (;;) {
-      const r = await this.pollAttempt(p.deviceCode)
-      if (r.kind === 'approved') {
-        clearPendingLogin()
-        return { signedIn: true, rec: r.rec }
-      }
-      if (r.kind === 'denied') {
-        clearPendingLogin()
-        throw new Error('Login was denied.')
-      }
-      if (r.kind === 'expired') {
-        clearPendingLogin()
-        throw new Error('The login request expired. Run `jovida login` again.')
-      }
-      if (r.kind === 'slow_down') {
-        interval += 5
-        setPendingLogin({ ...p, interval })
-      }
-      if (nowSec() + interval >= deadline) return { signedIn: false, pending: { ...p, interval } }
-      await sleep(interval * 1000)
-    }
   }
 
   // ── 过渡 / 续期 / 身份 ─────────────────────────────────────────

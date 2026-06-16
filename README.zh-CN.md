@@ -8,10 +8,7 @@
 >
 > 1. `npm i -g @fluxvita/jovida-cli`
 > 2. `jovida skill install` —— 装进所有探测到的 agent(只装一个用 `--agent <name>`)。若本机有多个 agent,告诉用户你将为它们全部安装。
-> 3. **替用户登录 —— 这些你自己跑,**别**让用户去跑 `jovida login`:**
->    a. `jovida login --no-wait` —— 打开用户浏览器并**立即返回**(不阻塞)。
->    b. 让用户在那个浏览器里登录并批准。
->    c. 每隔几秒轮询 `jovida login --check`,直到它输出 `signed_in` —— 遇非零退出(`denied` / `expired`)即停;请求约 10 分钟后过期。
+> 3. `jovida login` —— 打开用户浏览器、**自动轮询**,用户批准后自己完成。能跑就替用户跑;**若你不自动跑,要主动问用户「要不要我帮你登录」**(别直接甩命令让用户自己跑)。仅当开不了浏览器(远程 / headless)才让用户自己跑。
 > 4. `jovida whoami` —— 确认。验证成功前别认为安装完成。
 >
 > 仅当开不了浏览器(远程 / headless 会话)才让用户自己跑 `jovida login`。之后按 **[`SKILL.md`](./SKILL.md)** 驱动 CLI;后续命令以 `2`(`NOT_SIGNED_IN`)退出,用同样方式再登录一次。
@@ -47,9 +44,7 @@ jovida skill install
 jovida login          # 打开浏览器;登录并点「允许」授权该 CLI
 ```
 
-用 `jovida whoami` 验证。此后 CLI 保持登录态(自动续期),直到会话被吊销。
-
-> *AI agent:别让用户自己跑——你用非阻塞两步驱动:`jovida login --no-wait`,再轮询 `jovida login --check` 直到登录(见顶部说明)。*
+用 `jovida whoami` 验证。此后 CLI 保持登录态(自动续期),直到会话被吊销。(`jovida login` 自动轮询,你在浏览器批准后自己完成——不用再做别的。)
 
 ## 更新
 

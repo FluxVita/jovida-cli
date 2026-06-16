@@ -11,12 +11,7 @@ Help the user capture and manage their **Jovida Daily** todos by shelling out to
 This skill teaches the *semantics* — when to act, which command, how to compose them. For the **exact flags** of any command, run `jovida <command> --help` (e.g. `jovida create --help`); that is the source of truth and stays in lockstep with the installed version. Don't rely on a flag this skill doesn't name without checking `--help` first.
 
 > **If `jovida` isn't found**, the CLI isn't installed here — tell the user to install it (see the jovida-cli README); don't pretend you tracked anything.
-> **Sign-in is required (no anonymous mode), and signing the user in is YOUR job — do it, don't hand the command to the user.** If unsure whether they're signed in, run `jovida whoami` first. If they aren't (or any command exits `2`, `NOT_SIGNED_IN`), use the non-blocking two-step:
->  1. Run `jovida login --no-wait` — it opens the user's browser and returns immediately with a short code + URL (it does **not** block).
->  2. Tell the user to sign in and approve in the browser that just opened.
->  3. Poll `jovida login --check` every few seconds (e.g. `sleep 3; jovida login --check`) until it reports signed in **or errors** — stop on a non-zero exit (`denied` / `expired`); the request expires after ~10 minutes. On success, confirm with `jovida whoami`.
->
-> Only if no browser can open (a remote/headless session) fall back to asking the user to run `jovida login` themselves and approve. Either way, don't silently drop the task. **Never pass a token on the command line.**
+> **Sign-in is required (no anonymous mode).** If unsure whether they're signed in, run `jovida whoami` first (exit `2` = not signed in). If they aren't (or any command exits `2`, `NOT_SIGNED_IN`): sign them in with `jovida login` — it opens the user's browser, **auto-polls**, and finishes on its own once they approve (then confirm with `jovida whoami`). Run it for the user if you can; **if you won't run it automatically, ask the user whether you should run it for them** — don't just tell them to run it, and don't silently drop the task. Only if no browser can open (a remote/headless session) ask the user to run `jovida login` themselves. **Never pass a token on the command line.**
 
 ## Core mental model — read this first
 
@@ -52,7 +47,7 @@ Semantics below; exact flags via `jovida <cmd> --help`.
 - **`jovida reopen <id> [<id> …]`** — reopen completed todos (the inverse of `complete`).
 - **`jovida subtask check|uncheck|add|rm <entry_id> …`** — check / uncheck / add / remove an individual subtask (address it by its id or its 1-based number from `view`).
 - **`jovida delete <id> [<id> …]`** — permanently remove (several ids in one call; **no undo**). To stop a routine, delete its `recurring_id` — you can't delete a single occurrence.
-- **`jovida whoami` / `login` / `logout`** — session. Sign the user in *yourself* with the non-blocking two-step (`jovida login --no-wait`, then poll `jovida login --check`) — see the sign-in note at the top; only fall back to the user running it if no browser can open.
+- **`jovida whoami` / `login` / `logout`** — session. `jovida login` opens the browser and auto-polls until the user approves (nothing else to run); have the user run it if no browser can open.
 
 ## Workflows — composing the commands
 
@@ -71,4 +66,4 @@ Map the user's intent to a sequence; read before any change.
 - Quote the title and any value containing spaces. Keep titles/descriptions **single-line plain text** — newlines and shell metacharacters passed as arguments get mangled.
 - **Never put a token in a command** (it lands in shell history / process listings) — `jovida login` uses an interactive browser flow, there's no token to paste.
 - `delete` is idempotent: it reports success even for an id that doesn't exist (it won't fail like `complete`/`reopen` do on a missing id). So don't infer a todo existed just because `delete` "succeeded".
-- Don't claim success if a command exited non-zero — read the error and tell the user (exit `2` → sign them in yourself via the two-step, per the sign-in note up top).
+- Don't claim success if a command exited non-zero — read the error and tell the user (exit `2` → run `jovida login`, or have the user run it).
