@@ -2,7 +2,7 @@
 
 **English** · [简体中文](./README.zh-CN.md)
 
-The **Jovida Daily CLI** — capture and manage your **Jovida Daily** todos from the terminal and from AI coding agents (Codex, Claude Code, cloud sandboxes, …). It ships with an agent **skill** so your AI knows when and how to use it.
+The **Jovida Daily CLI** — capture and manage **Jovida Daily** todos from the terminal and from AI coding agents (Codex, Claude Code, …), including agents running in cloud sandboxes. It ships with an agent **skill** so the AI knows when and how to use it.
 
 > **Beta.** Jovida Daily is in private beta; the CLI requires a Jovida account (no anonymous mode).
 
@@ -25,6 +25,13 @@ jovida skill install
 ```
 
 Installs into **every detected** agent. If several agents are present, tell the user you're installing for all of them. For just one: `jovida skill install --agent codex` (repeatable / comma-separated; `jovida help skill` lists names). `--all` covers all known agents even if undetected.
+
+**If that command didn't install the skill for _you_** — you're a platform / cloud / sandbox agent that loads skills its own way and isn't in the supported list — don't try to make `install` fit. Get the skill content and place it wherever _your_ system reads skills from (you know your own convention):
+
+```bash
+jovida skill show                  # prints the skill; read it into your context, or:
+jovida skill show > <your-skill-dir>/jovida-cli/SKILL.md
+```
 
 **3. Sign the user in.** Run login **in the background** so you can relay the link and keep working while it polls:
 
@@ -51,8 +58,8 @@ From here, drive the CLI per **[`SKILL.md`](./SKILL.md)**. Sessions auto-renew; 
 
 ## What it is
 
-- **`jovida` command** — talks to your Jovida account over HTTPS (login required), keeps **no local todo database**, and syncs with your other Jovida devices.
-- **`SKILL.md`** (name: `jovida-cli`) — a portable behavior guide that teaches your AI to drive the CLI on a **single track: writes apply immediately** (no proposal/confirmation step; `complete` is reversible via `reopen`, but `delete` is permanent).
+- **`jovida` command** — talks to the user's Jovida account over HTTPS (login required), keeps **no local todo database**, and syncs with their other Jovida devices.
+- **`SKILL.md`** (name: `jovida-cli`) — a portable behavior guide that teaches the AI to drive the CLI on a **single track: writes apply immediately** (no proposal/confirmation step; `complete` is reversible via `reopen`, but `delete` is permanent).
 
 ## Quickstart
 
@@ -63,22 +70,22 @@ jovida view <entry_id>
 jovida complete <entry_id>
 ```
 
-- **JSON output is automatic when piped** (for scripts/agents); use `--json` / `--no-json` to force.
+- **JSON output is automatic when piped** (for scripts/agents); `--json` / `--no-json` force it on/off.
 - **Exit codes**: `0` ok · `1` usage · `2` not signed in · `3` backend/network · `4` not found.
 
 ## Commands
 
 `create` · `list` · `view` · `update` · `complete` · `reopen` · `subtask` · `delete` · `login` · `logout` · `whoami`.
-Run `jovida help` for usage, or see [`SKILL.md`](./SKILL.md) for flags & field conventions.
+`jovida help` lists usage; [`SKILL.md`](./SKILL.md) documents flags & field conventions.
 
 ## Auth
 
-`jovida login` uses the **OAuth device authorization flow**. It prints one URL with the approval code built in (`https://jovida.ai/jovida-daily/device?code=…`) and tries to open your browser; you sign in and approve the CLI there, and it receives a session token that **auto-renews** (set-and-forget) until the session is revoked. No keys to copy, no anonymous mode. On a machine without a browser, open that printed URL on any other device to approve.
+`jovida login` uses the **OAuth device authorization flow**: it prints one URL with the approval code built in (`https://jovida.ai/jovida-daily/device?code=…`), the user approves it in a browser, and the CLI receives a session token that **auto-renews** until the session is revoked. No keys to copy, no anonymous mode. (Step 3 above is how an agent drives this end-to-end, including the no-local-browser case.)
 
 ## Updating
 
-- **CLI**: `npm i -g @fluxvita/jovida-cli@latest`. (In an interactive terminal the CLI also notifies you when a newer version exists.)
-- **Skill**: run `jovida skill update` after updating the CLI — it re-copies the bundled `SKILL.md`, so the agent's knowledge stays in lockstep with the installed CLI version (same npm package, no drift).
+- **CLI**: `npm i -g @fluxvita/jovida-cli@latest`. (In an interactive terminal the CLI also prints a notice when a newer version exists.)
+- **Skill**: `jovida skill update` after updating the CLI — it re-copies the bundled `SKILL.md`, keeping the agent's knowledge in lockstep with the installed CLI version (same npm package, no drift).
 
 ## Manual install (without an AI agent)
 
@@ -91,15 +98,13 @@ jovida login                           # 3. sign in — opens a browser; approve
 jovida whoami                          # 4. confirm
 ```
 
-Build from source instead of npm: `git clone https://github.com/FluxVita/jovida-cli && cd jovida-cli && npm install && npm run build && npm link`, then `jovida --version`.
-
-Alternative skill installer covering more agents — but it pulls the skill from the repo's latest, not your installed CLI version: `npx skills add FluxVita/jovida-cli`.
-
-Supported agents for `jovida skill install`: Codex, Claude Code, Gemini CLI, Cursor, Windsurf, Continue, OpenCode, Goose, Qwen Code, Crush, KiloCode, Aider, GitHub Copilot (each at `<agent-dir>/skills/jovida-cli/`).
+- **Build from source** instead of npm: `git clone https://github.com/FluxVita/jovida-cli && cd jovida-cli && npm install && npm run build && npm link`, then `jovida --version`.
+- **Supported agents** for `jovida skill install`: Codex, Claude Code, Gemini CLI, Cursor, Windsurf, Continue, OpenCode, Goose, Qwen Code, Crush, KiloCode, Aider, GitHub Copilot (each at `<agent-dir>/skills/jovida-cli/`). An agent not on this list can use `jovida skill show` (see step 2).
+- **Alternative installer** covering more agents — but it pulls the skill from the repo's latest, not the installed CLI version: `npx skills add FluxVita/jovida-cli`.
 
 ## The skill
 
-[`SKILL.md`](./SKILL.md) · [`SKILL.zh.md`](./SKILL.zh.md) — the agent skill (English / 中文对照) that teaches your AI when and how to use the CLI.
+[`SKILL.md`](./SKILL.md) · [`SKILL.zh.md`](./SKILL.zh.md) — the agent skill (English / 中文对照) that teaches the AI when and how to use the CLI.
 
 ## License
 

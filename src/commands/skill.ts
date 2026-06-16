@@ -1,6 +1,6 @@
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { existsSync, mkdirSync, copyFileSync } from 'node:fs'
+import { existsSync, mkdirSync, copyFileSync, readFileSync } from 'node:fs'
 
 // 已知 agent → skill 安装位置 <home>/<dir>/skills/jovida-cli/SKILL.md。
 // keys = `--agent` 接受的定向名(小写、含别名);name = 展示名;dir = home 下子目录。
@@ -53,10 +53,20 @@ function selectAgents(names: string[] | undefined): typeof AGENTS {
  * 把随 CLI 包发布的 SKILL.md 装 / 更新进 agent 的 skill 目录。
  * 与 CLI 同一个 npm 版本 → 不漂移。`install` 与 `update` 行为相同(覆盖)。
  * 默认装进所有已检测到的 agent;`--agent codex|claude` 只装指定的;`--all` 即使未检测到也建目录。
+ *
+ * `show` = 把 SKILL.md 原样打印到 stdout —— 给「不在 AGENTS 列表 / 不从本地目录加载 skill」
+ * 的平台/沙盒 agent 用:它们自己 `jovida skill show > <自家 skill 路径>` 或读进上下文,
+ * 我们不替每个平台维护目录约定(每个 agent 最懂自己 skill 装哪)。
  */
 export function cmdSkill(sub: string | undefined, a: SkillArgs): void {
+  if (sub === 'show') {
+    const src = skillSource()
+    if (!existsSync(src)) throw new Error(`bundled SKILL.md not found at ${src}`)
+    process.stdout.write(readFileSync(src, 'utf8')) // 原样内容,不包 JSON(供 agent 直接读取/重定向落盘)
+    return
+  }
   if (sub && sub !== 'install' && sub !== 'update') {
-    throw new Error('usage: jovida skill install   (or: jovida skill update)')
+    throw new Error('usage: jovida skill install | update | show')
   }
   const src = skillSource()
   if (!existsSync(src)) throw new Error(`bundled SKILL.md not found at ${src}`)

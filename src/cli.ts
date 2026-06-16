@@ -86,6 +86,7 @@ Usage:
   jovida logout
   jovida whoami [--json]
   jovida skill install [--agent <name>]   # copy the bundled skill into agents (all detected, or one; see: jovida help skill)
+  jovida skill show                       # print the bundled skill to stdout (for agents that install skills their own way)
 
   jovida create "<title>" [--when <ISO>] [--priority none|low|medium|high]
                           [--remind <ISO> ...] [--category <s>] [--desc <s>]
@@ -269,6 +270,12 @@ Usage:
   jovida skill install --agent codex     # install for one agent only (repeatable / comma-separated)
   jovida skill update                    # same as install (re-copy; keeps the skill in lockstep with the CLI version)
   jovida skill install --all             # install for all known agents even if not detected
+  jovida skill show                      # print SKILL.md to stdout
+
+If your agent isn't in the list above (e.g. a platform / cloud / sandbox agent that loads
+skills its own way), don't rely on 'install' — run 'jovida skill show' and put the output
+wherever your agent reads skills from (you know your own convention):
+  jovida skill show > <your-skill-dir>/jovida-cli/SKILL.md
 `
 }
 

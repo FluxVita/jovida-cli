@@ -2,7 +2,7 @@
 
 [English](./README.md) · **简体中文**
 
-**Jovida Daily CLI**——在终端、以及在 AI 编码 agent(Codex、Claude Code、云端沙盒……)里捕获和管理你的 **Jovida Daily** 待办。随仓附带一份 agent **skill**,让 AI 知道何时、如何使用它。
+**Jovida Daily CLI**——在终端、以及在 AI 编码 agent(Codex、Claude Code……,含跑在云端沙盒里的 agent)里捕获和管理 **Jovida Daily** 待办。随仓附带一份 agent **skill**,让 AI 知道何时、如何使用它。
 
 > **内测中。** Jovida Daily 处于私有内测;CLI 需要 Jovida 账号(无匿名模式)。
 
@@ -25,6 +25,13 @@ jovida skill install
 ```
 
 装进**所有探测到**的 agent。若本机有多个 agent,告诉用户你将为它们全部安装。只装一个:`jovida skill install --agent codex`(可重复 / 逗号分隔;`jovida help skill` 查完整名单)。`--all` 可对所有已知 agent 安装(即使未探测到)。
+
+**如果上面这条命令没给**你自己**装上 skill**——你是平台 / 云端 / 沙盒型 agent、以自己的方式加载 skill、不在支持列表里——别硬套 `install`。自己把 skill 内容放到**你**系统读 skill 的地方(你最清楚自己的约定):
+
+```bash
+jovida skill show                  # 打印 skill;读进你的上下文,或:
+jovida skill show > <你的-skill-目录>/jovida-cli/SKILL.md
+```
 
 **3. 给用户登录。** 把 login 放到**后台**跑,这样你能边转发链接边继续干活:
 
@@ -51,8 +58,8 @@ jovida whoami
 
 ## 这是什么
 
-- **`jovida` 命令** —— 经 HTTPS 操作你的 Jovida 账号(需登录),**不留本地待办库**,与你的其他 Jovida 设备同步。
-- **`SKILL.md`**(name:`jovida-cli`)—— 可移植的行为指引,教你的 AI 走**单轨:写即时生效**(无提议/确认步骤;`complete` 可经 `reopen` 撤回,但 `delete` 永久)。
+- **`jovida` 命令** —— 经 HTTPS 操作用户的 Jovida 账号(需登录),**不留本地待办库**,与用户的其他 Jovida 设备同步。
+- **`SKILL.md`**(name:`jovida-cli`)—— 可移植的行为指引,教 AI 走**单轨:写即时生效**(无提议/确认步骤;`complete` 可经 `reopen` 撤回,但 `delete` 永久)。
 
 ## 快速开始
 
@@ -63,21 +70,21 @@ jovida view <entry_id>
 jovida complete <entry_id>
 ```
 
-- **管道输出自动为 JSON**(供脚本/agent);`--json` / `--no-json` 强制。
+- **管道输出自动为 JSON**(供脚本/agent);`--json` / `--no-json` 强制开/关。
 - **退出码**:`0` 成功 · `1` 用法 · `2` 未登录 · `3` 后端/网络 · `4` 不存在。
 
 ## 命令
 
 `create` · `list` · `view` · `update` · `complete` · `reopen` · `subtask` · `delete` · `login` · `logout` · `whoami`。
-`jovida help` 查看用法,或见 [`SKILL.md`](./SKILL.md) 了解参数与字段约定。
+`jovida help` 列出用法;[`SKILL.md`](./SKILL.md) 说明参数与字段约定。
 
 ## 鉴权
 
-`jovida login` 走 **OAuth 设备授权流**:打印一条已内置授权码的 URL(`https://jovida.ai/jovida-daily/device?code=…`)并尽力打开你的浏览器;你在浏览器登录并点「批准」授权该 CLI,CLI 随即拿到会话 token,且**自动续期**(set-and-forget),除非会话被吊销。无需复制任何 key,也无匿名模式。所在机器没有浏览器时,把这条打印出来的 URL 在任意别的设备上打开批准即可。
+`jovida login` 走 **OAuth 设备授权流**:打印一条已内置授权码的 URL(`https://jovida.ai/jovida-daily/device?code=…`),用户在浏览器批准,CLI 随即拿到会话 token,且**自动续期**,除非会话被吊销。无需复制任何 key,也无匿名模式。(上面第 3 步是 agent 如何端到端驱动这套流程,含本机无浏览器的情形。)
 
 ## 更新
 
-- **CLI**:`npm i -g @fluxvita/jovida-cli@latest`。(交互式终端里,CLI 还会在有新版时提示你。)
+- **CLI**:`npm i -g @fluxvita/jovida-cli@latest`。(交互式终端里,CLI 还会在有新版时打印提示。)
 - **skill**:更新完 CLI 后跑 `jovida skill update`——它重拷随包的 `SKILL.md`,让 agent 认知与已装 CLI 版本同步(同一 npm 包,不漂移)。
 
 ## 手动安装(没有 AI agent 时)
@@ -91,15 +98,13 @@ jovida login                           # 3. 登录——打开浏览器,批准�
 jovida whoami                          # 4. 确认
 ```
 
-从源码构建(替代 npm):`git clone https://github.com/FluxVita/jovida-cli && cd jovida-cli && npm install && npm run build && npm link`,再 `jovida --version` 验证。
-
-覆盖更多 agent 的替代 skill 安装器——但它从仓库最新拉 skill、不保证与你装的 CLI 版本一致:`npx skills add FluxVita/jovida-cli`。
-
-`jovida skill install` 支持的 agent:Codex、Claude Code、Gemini CLI、Cursor、Windsurf、Continue、OpenCode、Goose、Qwen Code、Crush、KiloCode、Aider、GitHub Copilot(各装在 `<agent 目录>/skills/jovida-cli/`)。
+- **从源码构建**(替代 npm):`git clone https://github.com/FluxVita/jovida-cli && cd jovida-cli && npm install && npm run build && npm link`,再 `jovida --version` 验证。
+- **`jovida skill install` 支持的 agent**:Codex、Claude Code、Gemini CLI、Cursor、Windsurf、Continue、OpenCode、Goose、Qwen Code、Crush、KiloCode、Aider、GitHub Copilot(各装在 `<agent 目录>/skills/jovida-cli/`)。不在此列的 agent 用 `jovida skill show`(见第 2 步)。
+- **覆盖更多 agent 的替代安装器**——但它从仓库最新拉 skill、不保证与你装的 CLI 版本一致:`npx skills add FluxVita/jovida-cli`。
 
 ## skill
 
-[`SKILL.md`](./SKILL.md) · [`SKILL.zh.md`](./SKILL.zh.md) —— agent skill(英文 / 中文对照),教你的 AI 何时、如何使用 CLI。
+[`SKILL.md`](./SKILL.md) · [`SKILL.zh.md`](./SKILL.zh.md) —— agent skill(英文 / 中文对照),教 AI 何时、如何使用 CLI。
 
 ## 许可
 
