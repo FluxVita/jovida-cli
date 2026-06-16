@@ -52,6 +52,14 @@ export class NotSignedInError extends Error {
   }
 }
 
+/** 设备流登录的可重试失败(超时 / 过期 / 被拒 / 异常响应)→ exit 3(瞬时态,重试登录)。 */
+export class LoginError extends Error {
+  constructor(msg: string) {
+    super(msg)
+    this.name = 'LoginError'
+  }
+}
+
 export class Session {
   private refreshing: Promise<void> | null = null
 
@@ -108,7 +116,7 @@ export class Session {
       case 'EXPIRED_TOKEN':
         return { kind: 'expired' }
       default:
-        throw new Error(`Unexpected device_token reason: ${resp.reason}`)
+        throw new LoginError(`Unexpected device_token reason: ${resp.reason}`)
     }
   }
 
@@ -116,13 +124,13 @@ export class Session {
     let interval = Math.max(1, d.interval || 5)
     const deadline = nowSec() + (d.expiresIn || 600)
     for (;;) {
-      if (nowSec() >= deadline) throw new Error('Login timed out before approval. Run `jovida login` again.')
+      if (nowSec() >= deadline) throw new LoginError('Login timed out before approval. Run `jovida login` again.')
       await sleep(interval * 1000)
       const r = await this.pollAttempt(d.deviceCode)
       if (r.kind === 'approved') return r.rec
       if (r.kind === 'slow_down') interval += 5
-      else if (r.kind === 'denied') throw new Error('Login was denied.')
-      else if (r.kind === 'expired') throw new Error('The login request expired. Run `jovida login` again.')
+      else if (r.kind === 'denied') throw new LoginError('Login was denied.')
+      else if (r.kind === 'expired') throw new LoginError('The login request expired. Run `jovida login` again.')
     }
   }
 

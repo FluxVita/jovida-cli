@@ -12,7 +12,7 @@ import { cmdLogin } from './commands/login'
 import { cmdWhoami } from './commands/whoami'
 import { cmdSkill } from './commands/skill'
 import { NotFoundError } from './commands/shared'
-import { NotSignedInError } from './session'
+import { NotSignedInError, LoginError } from './session'
 import { ApiError } from './api'
 import { clearCredentials } from './state'
 import { maybeNotifyUpdate } from './lib/update-check'
@@ -277,12 +277,14 @@ function exitCodeFor(e: unknown): number {
   if (e instanceof NotSignedInError) return 2
   if (e instanceof NotFoundError) return 4
   if (e instanceof ApiError) return 3
+  if (e instanceof LoginError) return 3 // 登录超时/过期/被拒 = 瞬时态,重试登录
   return 1
 }
 function errCode(e: unknown): string {
   if (e instanceof NotSignedInError) return 'NOT_SIGNED_IN'
   if (e instanceof NotFoundError) return 'NOT_FOUND'
   if (e instanceof ApiError) return 'BACKEND'
+  if (e instanceof LoginError) return 'LOGIN_FAILED'
   return 'USAGE'
 }
 
