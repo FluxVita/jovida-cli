@@ -12,6 +12,12 @@ The **Jovida Daily CLI** — capture and manage **Jovida Daily** todos from the 
 
 **You are an AI agent and a user asked you to install this. Do every step below yourself — never hand a command to the user, and don't stop until `jovida whoami` succeeds. The user's _only_ action is one click in a browser (approve) or opening one link.**
 
+> **Sandbox note.** If you run in a sandbox where the home directory may not be writable or persistent, point the CLI's data dir at your workspace up front and use it for **every** `jovida` command, so the login token persists:
+> ```bash
+> export JOVIDA_HOME="$PWD/.jovida"
+> ```
+> (If a write ever fails, the CLI tells you to do exactly this. Set it once, before login.)
+
 **1. Install the CLI**
 
 ```bash

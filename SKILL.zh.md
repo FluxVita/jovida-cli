@@ -13,7 +13,7 @@ allowed-tools: Bash(jovida:*)
 本 skill 教的是**语义**——何时动手、用哪个命令、如何组合。某命令的**确切参数**请跑 `jovida <命令> --help`(如 `jovida create --help`);那才是参数真相,且与已安装版本同步。本 skill 没提到的参数,先看 `--help` 再用。
 
 > **若 `jovida` 命令不存在**,说明本机没装 CLI——提醒用户安装(见 jovida-cli README);别假装记下了什么。
-> **登录是必须的(无匿名模式)。** 不确定是否已登录就先跑 `jovida whoami`(exit `2` = 未登录);若未登录(或任何命令以 `2`/`NOT_SIGNED_IN` 退出):**由你**给用户登录——把 `jovida login` 放后台跑,再用 `jovida whoami` 确认。它会打印一条 `https://jovida.ai/jovida-daily/device?code=…` 的 URL(授权码已内置)、**自动轮询**,用户批准后自己结束。浏览器在用户机器上弹出了就让他在那批准;没弹出(你在云沙盒 / 远程机器)就把这条 URL 转给用户、让他在自己的设备上打开批准。**任何情况都别让用户自己去敲 `jovida login`**——CLI 必须跑在你所在的机器上(token 要落在你身边),用户只负责批准。也别默默跳过。**绝不把 token 写进命令行。**
+> **登录是必须的(无匿名模式)。** 不确定是否已登录就先跑 `jovida whoami`(exit `2` = 未登录);若未登录(或任何命令以 `2`/`NOT_SIGNED_IN` 退出):**由你**给用户登录——把 `jovida login` 放后台跑,再用 `jovida whoami` 确认。它会打印一条 `https://jovida.ai/jovida-daily/device?code=…` 的 URL(授权码已内置)、**自动轮询**,用户批准后自己结束。浏览器在用户机器上弹出了就让他在那批准;没弹出(你在云沙盒 / 远程机器)就把这条 URL 转给用户、让他在自己的设备上打开批准。**任何情况都别让用户自己去敲 `jovida login`**——CLI 必须跑在你所在的机器上(token 要落在你身边),用户只负责批准。也别默默跳过。沙箱里 home 可能不可写 / 不持久时,**先**把 `JOVIDA_HOME` 指到可写路径(`export JOVIDA_HOME="$PWD/.jovida"`)并对每条命令都用它,登录态才能留存(写盘失败时 CLI 会原样这么提示你)。**绝不把 token 写进命令行。**
 
 ## 核心心智模型——先读这段
 
@@ -41,7 +41,7 @@ allowed-tools: Bash(jovida:*)
 
 语义见下;确切参数跑 `jovida <命令> --help`。
 
-- **`jovida list`** —— 列出待办(默认今天的 pending)。用 scope/status/range 放宽,或用 **`--query <文本>`(标题+描述)、`--category`、`--priority` 搜索/过滤**(带任一过滤时 scope+status 默认放开到 *all*)。JSON 带 **`total` + `has_more`**——若 `has_more` 为真说明被 `--limit` 截断了,应调大 `--limit` 或收窄查询,**别据此断定某条待办不存在**。加 `--full` 可一次拿全字段(无需再 `view`)。重复待办以带日期的**发生**呈现、带 `recurring_id` 标注:显式 `--scope range --from/--to` 列出该窗口内**每一次**发生;`today`/`upcoming` 只给每条例行的下一次发生。
+- **`jovida list`** —— 列出待办(默认今天的 pending)。**空结果不等于「用户没有待办」**——那只是今天的未完成项;在告诉用户「没有」之前,先用 `--scope all --status all`(或日期区间)放宽。用 scope/status/range 放宽,或用 **`--query <文本>`(标题+描述)、`--category`、`--priority` 搜索/过滤**(带任一过滤时 scope+status 默认放开到 *all*)。JSON 带 **`total` + `has_more`**——若 `has_more` 为真说明被 `--limit` 截断了,应调大 `--limit` 或收窄查询,**别据此断定某条待办不存在**。加 `--full` 可一次拿全字段(无需再 `view`)。重复待办以带日期的**发生**呈现、带 `recurring_id` 标注:显式 `--scope range --from/--to` 列出该窗口内**每一次**发生;`today`/`upcoming` 只给每条例行的下一次发生。
 - **`jovida view <entry_id>`** —— 单条待办完整详情(description、subtasks、提醒……)。改传重复待办的 `recurring_id` 则回看它的重复规则。
 - **`jovida create "<标题>"`** —— 新建一条待办(**一次一条**;多条多次跑)。给它加重复规则则成为一条重复待办(返回 `recurring_id`)。
 - **`jovida update <entry_id>`** —— 改待办的字段;**只改你传的字段**。`--remind` / `--subtask` 整列替换(子任务会按标题保留同名项的完成状态;单条子任务用下面的 `subtask`)。传 `recurring_id` 改重复待办(含重复规则);传**发生 id**(取自 `list`)则只改那一次发生(会把那天材料化;例行与其它发生不动)。要停掉例行的后续发生,给重复待办设 `--until`。传值只会设置/替换;要**清空**某字段(去掉时间、清空所有提醒、清空分组…)用对应的 `--clear-*`(见 `--help`)。

@@ -26,8 +26,37 @@ interface LocalState {
   updateLatest?: string // 缓存的最新版本号
 }
 
+/** 写盘失败(沙箱 home 不可写最常见)→ 转成可执行指引,而非裸 EACCES。 */
+function writeError(e: unknown): Error {
+  const msg = e instanceof Error ? e.message : String(e)
+  return new Error(
+    `cannot write to data dir ${DIR} (${msg}). ` +
+      `If this is a sandbox where the home directory isn't writable or persistent, ` +
+      `set JOVIDA_HOME to a writable directory and retry — e.g.  JOVIDA_HOME="$PWD/.jovida" jovida login`
+  )
+}
+
 function ensureDir(): void {
-  if (!existsSync(DIR)) mkdirSync(DIR, { recursive: true, mode: 0o700 })
+  try {
+    if (!existsSync(DIR)) mkdirSync(DIR, { recursive: true, mode: 0o700 })
+  } catch (e) {
+    throw writeError(e)
+  }
+}
+
+/**
+ * 登录前确认数据目录可写。沙箱里 `~` 常不可写 → 提前报错(带 JOVIDA_HOME 指引),
+ * 免得用户在浏览器批准之后才在写 token 那一刻失败、白批准一轮。
+ */
+export function ensureWritable(): void {
+  ensureDir()
+  const probe = join(DIR, '.write-probe')
+  try {
+    writeFileSync(probe, '')
+    rmSync(probe)
+  } catch (e) {
+    throw writeError(e)
+  }
 }
 function readJson<T>(p: string): T | null {
   try {
@@ -42,7 +71,11 @@ function loadState(): LocalState {
 }
 function saveState(s: LocalState): void {
   ensureDir()
-  writeFileSync(STATE, JSON.stringify(s, null, 2))
+  try {
+    writeFileSync(STATE, JSON.stringify(s, null, 2))
+  } catch (e) {
+    throw writeError(e)
+  }
 }
 
 /** Vita-Did:首次派生(机器标识)并持久化;重装后由 machine-id 派生回同值。 */
@@ -86,7 +119,11 @@ function readCreds(): Credentials | null {
 }
 function writeCreds(c: Credentials): void {
   ensureDir()
-  writeFileSync(CRED, JSON.stringify(c), { mode: 0o600 })
+  try {
+    writeFileSync(CRED, JSON.stringify(c), { mode: 0o600 })
+  } catch (e) {
+    throw writeError(e)
+  }
 }
 
 export function getToken(): TokenRecord | null {

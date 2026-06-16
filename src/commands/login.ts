@@ -1,6 +1,6 @@
 import type { Ctx } from '../ctx'
 import type { DeviceAuth } from '../session'
-import type { TokenRecord } from '../state'
+import { ensureWritable, type TokenRecord } from '../state'
 import { tryOpenBrowser } from '../lib/open-url'
 
 export interface LoginArgs {
@@ -30,6 +30,8 @@ function reportSignedIn(ctx: Ctx, rec: TokenRecord, json?: boolean): void {
  * - `--token` = 过渡流(开发期):直接粘一枚 Sign 态 vita token。
  */
 export async function cmdLogin(ctx: Ctx, a: LoginArgs): Promise<void> {
+  // 先确认能落盘:沙箱 home 不可写时提前报错(带 JOVIDA_HOME 指引),不让用户白批准一轮。
+  ensureWritable()
   if (a.token) {
     reportSignedIn(ctx, await ctx.session.loginWithToken(a.token), a.json)
     return
