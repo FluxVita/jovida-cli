@@ -11,10 +11,10 @@ export interface LoginArgs {
 /** 设备流发起后，向用户展示 URL + 短码（并尽力开浏览器）。走 stderr，不污染 --json stdout。 */
 function present(d: DeviceAuth): void {
   const opened = tryOpenBrowser(d.verificationUriComplete)
-  process.stderr.write('\nTo sign in, open this URL in a browser:\n')
-  process.stderr.write(`  ${d.verificationUri}\n`)
-  process.stderr.write('and enter the code:\n')
-  process.stderr.write(`  ${d.userCode}\n\n`)
+  // 首选展示「带授权码的完整 URL」——用户只需复制这一条打开即可,页面自动带上短码。
+  process.stderr.write('\nTo sign in, open this URL in a browser (the code is built in):\n')
+  process.stderr.write(`  ${d.verificationUriComplete}\n\n`)
+  process.stderr.write(`(if the page asks for a code, enter: ${d.userCode})\n`)
   if (opened) process.stderr.write('(opened your browser automatically)\n')
   process.stderr.write('Waiting for approval…\n')
 }
