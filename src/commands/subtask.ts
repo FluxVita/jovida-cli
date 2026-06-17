@@ -12,7 +12,7 @@ export interface SubtaskArgs {
   json?: boolean
 }
 
-/** 把目标(sub_ id 或 1-based 序号)解析为 subtasks 数组下标;无效返回 -1。 */
+/** 把目标(子任务 id 或 1-based 序号)解析为 subtasks 数组下标;无效返回 -1。 */
 function resolveIndex(subtasks: Subtask[], target: string): number {
   if (/^\d+$/.test(target)) {
     const idx = Number(target) - 1
@@ -58,7 +58,7 @@ export async function cmdSubtask(ctx: Ctx, a: SubtaskArgs): Promise<void> {
     const idxs = a.rest.map((target) => {
       const i = resolveIndex(subtasks, target)
       if (i < 0) {
-        throw new Error(`subtask not found: ${target} (use its id like sub_… or a 1-based number from \`jovida view ${a.entryId}\`)`)
+        throw new Error(`subtask not found: ${target} (use its id or a 1-based number from \`jovida view ${a.entryId}\`)`)
       }
       return i
     })

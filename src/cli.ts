@@ -207,9 +207,9 @@ rule from an occurrence — edit the recurring_id for that.
 
 Examples:
   jovida update cli_01H... --priority high --when 2026-06-21T09:00:00+08:00
-  jovida update series_01H... --weekdays mon,fri      # change which weekdays it repeats
-  jovida update series_01H... --until 2026-12-31      # set an end date / stop future occurrences
-  jovida update recurring:series_01H...:1781452800 --title "moved" --when 2026-06-15T14:00:00+08:00   # tweak one occurrence
+  jovida update cli_01J... --weekdays mon,fri      # recurring_id: change which weekdays it repeats
+  jovida update cli_01J... --until 2026-12-31      # recurring_id: set an end date / stop future occurrences
+  jovida update recurring:cli_01J...:1781452800 --title "moved" --when 2026-06-15T14:00:00+08:00   # tweak one occurrence
 `,
   complete: `jovida complete — mark one or more todos done
 
@@ -232,7 +232,7 @@ Usage:
   jovida subtask add     <entry_id> "<title>"        # append a subtask
   jovida subtask rm      <entry_id> <id|index ...>   # remove subtask(s)
 
-Address a subtask by its id (sub_…) or its 1-based number from \`jovida view <entry_id>\`.
+Address a subtask by its id (shown in \`jovida view <entry_id>\`) or its 1-based number there.
 `,
   delete: `jovida delete — permanently remove one or more todos (no undo)
 
