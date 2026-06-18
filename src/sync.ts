@@ -106,7 +106,8 @@ export class SyncClient {
     }
   }
 
-  /** 逐条硬删(无 OCC 门控;对未知 id 幂等)。 */
+  // 逐条删除(无 OCC 门控;对未知 id 幂等)。服务端为全局软删(写 deleted_at),但对客户端透明:
+  // 快照过滤掉已删行,删除契约仍是「快照中缺失 ⇒ 已删」;同 id 再 put 会就地复活(覆盖、清 deleted_at)。
   async deleteObjects(ids: string[]): Promise<void> {
     for (const objectId of ids) await this.api.post(DELETE, { objectId })
   }
