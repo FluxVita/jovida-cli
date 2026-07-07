@@ -2,6 +2,8 @@
 import { makeCtx } from './ctx'
 import { cmdCreate } from './commands/create'
 import { cmdList } from './commands/list'
+import { cmdDue } from './commands/due'
+import { cmdImport } from './commands/import'
 import { cmdView } from './commands/view'
 import { cmdUpdate } from './commands/update'
 import { cmdComplete } from './commands/complete'
@@ -14,7 +16,7 @@ import { cmdSkill } from './commands/skill'
 import { NotFoundError } from './commands/shared'
 import { NotSignedInError, LoginError } from './session'
 import { ApiError } from './api'
-import { clearCredentials } from './state'
+import { clearCredentials, invalidateSnapshotCache } from './state'
 import { maybeNotifyUpdate } from './lib/update-check'
 
 const VERSION: string = require('../package.json').version
@@ -28,6 +30,9 @@ const BOOLEAN_FLAGS = new Set([
   'full',
   'all',
   'help',
+  'brief',
+  'fresh',
+  'dry-run',
   'clear-when',
   'clear-remind',
   'clear-category',
@@ -97,6 +102,10 @@ Usage:
   jovida list  [--scope today|upcoming|recent|range|all] [--status pending|completed|all]
                [--query <text>] [--category <s>] [--priority <p>]
                [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--limit N] [--full] [--json]
+  jovida due   [--within 2h|90m|1d] [--brief] [--fresh] [--json]
+               # overdue + due-soon radar (statusline / agent-hook friendly; cached)
+  jovida import lark [--category <s>] [--dry-run] [--json]
+               # one-way import of your incomplete Lark/Feishu tasks (idempotent, re-runnable)
   jovida view <entry_id|recurring_id> [--json]
   jovida update <entry_id|recurring_id> [--title ...] [--when ...] [--remind ...] [...]
                           (recurring_id: also --repeat/--every/--weekdays/--until to change the repeat rule)
@@ -171,6 +180,57 @@ Examples:
   jovida list --category work --priority high
   jovida list --scope range --from 2026-06-01 --to 2026-06-30
   jovida list --full          # full detail of each todo in one call
+`,
+  due: `jovida due — overdue + due-soon radar (built for statuslines and agent hooks)
+
+Usage:
+  jovida due [options]
+
+Shows pending todos that are overdue, plus those whose deadline or reminder falls
+within the window (default 24h). Repeating todos contribute their occurrences.
+A date-only todo counts as due by the end of its day.
+
+Options:
+  --within <dur>   window: 90m | 2h | 1d | a plain number = hours (default 24h)
+  --brief          one line for statuslines/hooks: "⏰ 2 overdue · 14:00 pay rent +1"
+                   prints NOTHING when nothing is due; never fails (errors → silent, exit 0)
+  --fresh          bypass the snapshot cache and pull now
+  --ttl <secs>     snapshot cache TTL (default 60). An expired cache is revalidated with a
+                   cheap version probe first — a full re-pull happens only when data actually
+                   changed. Any write through the CLI invalidates the cache immediately.
+  --json           {overdue, upcoming, counts, within_secs, cache_age_secs}
+
+Wire it into Claude Code (or any TUI agent):
+  statusline  — append \`jovida due --brief\` to your status line command
+  hook        — UserPromptSubmit hook running \`jovida due --brief\`: when something is
+                due its one-liner is injected as context, so the agent reminds you in-chat
+  Set JOVIDA_TIMEOUT_MS (e.g. 5000) in those commands so a bad network can't stall the TUI.
+`,
+  import: `jovida import — one-way import from an external source (currently: Lark/Feishu tasks)
+
+Usage:
+  jovida import lark [--category <s>] [--dry-run] [--json]
+
+Reads your INCOMPLETE Lark "my tasks" via the official lark-cli and imports them
+as Jovida todos. Prerequisites:
+  npm i -g @larksuite/cli && lark-cli auth login --domain task
+
+Idempotent and re-runnable — safe to run on a schedule:
+  - each Lark task maps to a deterministic id (lark_<guid>): re-runs never duplicate
+  - new tasks are created; changed title/description/due are updated
+    (fields you edit in Jovida that the import doesn't own — priority, reminders,
+     subtasks, category — are preserved)
+  - a previously imported task later completed in Lark is completed in Jovida too
+  - tasks deleted in Lark are kept in Jovida (reported as "orphaned")
+  - one-way: nothing is ever written back to Lark
+
+Mapping: summary first line → title (other lines + Lark description + back-link → description);
+all-day due → date-only todo; timed due → exact deadline; no due → undated.
+
+Options:
+  --category <s>   grouping label for newly created todos (default 飞书)
+  --dry-run        show what would happen without writing
+  --json
 `,
   view: `jovida view — full details of one todo, a repeating todo, or one occurrence
 
@@ -325,6 +385,7 @@ async function main(): Promise<void> {
       break
     case 'logout':
       clearCredentials()
+      invalidateSnapshotCache() // 退出后不留上一账号的待办快照
       console.log(json ? JSON.stringify({ status: 'signed_out' }) : '✓ signed out')
       break
     case 'whoami':
@@ -363,6 +424,23 @@ async function main(): Promise<void> {
         category: str(flags.category),
         priority: str(flags.priority),
         full: flags.full === true,
+        json
+      })
+      break
+    case 'due':
+      await cmdDue(ctx, {
+        within: str(flags.within),
+        ttl: num(flags.ttl),
+        brief: flags.brief === true,
+        fresh: flags.fresh === true,
+        json
+      })
+      break
+    case 'import':
+      await cmdImport(ctx, {
+        source: positionals[0],
+        category: str(flags.category),
+        dryRun: flags['dry-run'] === true,
         json
       })
       break

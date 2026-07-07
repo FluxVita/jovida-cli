@@ -3,15 +3,18 @@
 export interface AppConfig {
   baseUrl: string
   appId: string
+  timeoutMs: number
 }
 
 const DEFAULT_BASE_URL = 'https://tapi.jovida.ai' // 生产(公开默认)
 const DEFAULT_APP_ID = '2012' // Vita-Aid:复用 Jovida TODO app_id(同 group → 同 vitaID)
 
 export function loadConfig(): AppConfig {
+  const t = Number(process.env['JOVIDA_TIMEOUT_MS'])
   return {
     baseUrl: process.env['JOVIDA_API_URL'] || DEFAULT_BASE_URL,
-    appId: process.env['JOVIDA_APP_ID'] || DEFAULT_APP_ID
+    appId: process.env['JOVIDA_APP_ID'] || DEFAULT_APP_ID,
+    timeoutMs: Number.isFinite(t) && t > 0 ? t : 0 // 0 = 不限时(交互场景);statusline/hook 用 env 收紧
   }
 }
 

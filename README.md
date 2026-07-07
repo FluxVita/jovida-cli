@@ -58,6 +58,11 @@ Either way the command finishes on its own once the user approves. **Never tell 
 jovida whoami
 ```
 
+**5. Offer the extras (optional, ask — don't just do).** Setup is complete; now tell the user about two things you can configure for them, and act only if they want it:
+
+- **Reminders in their terminal** — if your host has a statusline or prompt hooks (Claude Code does), `jovida due --brief` can surface overdue / due-soon todos automatically. Recipe: the [Reminders in your terminal](#reminders-in-your-terminal--tui-agent) section below (or `jovida help due`).
+- **Import their Lark/Feishu tasks** — if they use Lark tasks, `jovida import lark` brings open tasks over (idempotent, re-runnable; see `jovida help import`). Run `--dry-run` first and show them what would come across.
+
 From here, drive the CLI per **[`SKILL.md`](./SKILL.md)**. Sessions auto-renew; if any later command exits `2` (`NOT_SIGNED_IN`), sign the user in again exactly as in step 3.
 
 ---
@@ -81,8 +86,33 @@ jovida complete <entry_id>
 
 ## Commands
 
-`create` · `list` · `view` · `update` · `complete` · `reopen` · `subtask` · `delete` · `login` · `logout` · `whoami`.
+`create` · `list` · `due` · `view` · `update` · `complete` · `reopen` · `subtask` · `delete` · `import` · `login` · `logout` · `whoami`.
 `jovida help` lists usage; [`SKILL.md`](./SKILL.md) documents flags & field conventions.
+
+`jovida import lark` pulls your incomplete Lark/Feishu tasks into Jovida (one-way, idempotent — safe to re-run or schedule; tasks completed in Lark later get completed in Jovida on the next run). It reads via the official `lark-cli` (`npm i -g @larksuite/cli && lark-cli auth login --domain task`); see `jovida help import`.
+
+## Reminders in your terminal / TUI agent
+
+`jovida due` is a read-only "what needs attention" radar: overdue todos plus anything whose deadline **or reminder** falls within a window (default 24h). It serves from a short-lived local snapshot cache (60s; any write through the CLI invalidates it), and an expired cache is revalidated with a cheap version probe before any full re-pull — so it's cheap enough to run on every prompt or statusline refresh. `--brief` prints a single line — and prints **nothing** when nothing is due, and stays **silent on errors** (exit 0), so it can't dirty a statusline.
+
+Wire it into Claude Code (same idea works for any TUI agent with hooks/statusline):
+
+```jsonc
+// ~/.claude/settings.json
+{
+  // statusline: show due todos at a glance (append to your existing statusline command)
+  "statusLine": { "type": "command", "command": "... ; JOVIDA_TIMEOUT_MS=5000 jovida due --brief" },
+  // hook: when something is due, its one-liner is injected as context on your next message,
+  // so the agent brings it up in conversation
+  "hooks": {
+    "UserPromptSubmit": [
+      { "hooks": [ { "type": "command", "command": "JOVIDA_TIMEOUT_MS=5000 jovida due --brief", "timeout": 10 } ] }
+    ]
+  }
+}
+```
+
+Set `JOVIDA_TIMEOUT_MS` (ms) in these commands so a bad network can never stall your TUI. For system-level notifications when no agent is open, run `jovida due --json` from cron/launchd and pipe into your notifier of choice.
 
 ## Auth
 

@@ -17,7 +17,8 @@ export function makeCtx(): Ctx {
     baseUrl: cfg.baseUrl,
     appId: cfg.appId,
     deviceId: getDeviceId(),
-    platform: platformName()
+    platform: platformName(),
+    timeoutMs: cfg.timeoutMs
   })
   const session = new Session(api)
   const sync = new SyncClient(api)

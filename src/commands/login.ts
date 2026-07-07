@@ -1,6 +1,6 @@
 import type { Ctx } from '../ctx'
 import type { DeviceAuth } from '../session'
-import { ensureWritable, type TokenRecord } from '../state'
+import { ensureWritable, invalidateSnapshotCache, type TokenRecord } from '../state'
 import { tryOpenBrowser } from '../lib/open-url'
 
 export interface LoginArgs {
@@ -20,8 +20,10 @@ function present(d: DeviceAuth): void {
 }
 
 function reportSignedIn(ctx: Ctx, rec: TokenRecord, json?: boolean): void {
-  if (json) console.log(JSON.stringify({ status: 'signed_in', vitaId: rec.vitaId, baseUrl: ctx.baseUrl }))
-  else console.log(`\n✓ signed in  vitaId=${rec.vitaId || '(unknown)'}  (${ctx.baseUrl})`)
+  invalidateSnapshotCache() // 快照缓存不分账号:换号登录后不能再喂旧账号的数据给 `due`
+  // rec.vitaId 是存储字段名(credentials.json 兼容);对外叫 userId(产品术语,同 whoami)。
+  if (json) console.log(JSON.stringify({ status: 'signed_in', userId: rec.vitaId, baseUrl: ctx.baseUrl }))
+  else console.log(`\n✓ signed in  userId=${rec.vitaId || '(unknown)'}  (${ctx.baseUrl})`)
 }
 
 /**

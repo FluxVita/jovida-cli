@@ -11,8 +11,7 @@ export async function cmdWhoami(ctx: Ctx, a: WhoamiArgs): Promise<void> {
     console.log(JSON.stringify({ ...info, baseUrl: ctx.baseUrl }))
     return
   }
-  console.log(`vitaHao:     ${info.vitaHao || '(none)'}`)
-  console.log(`vitaId:      ${info.vitaId || '(none)'}`)
-  console.log(`entitlement: ${info.entitlement || '(none)'}`)
-  console.log(`baseUrl:     ${ctx.baseUrl}`)
+  console.log(`Jovida ID: ${info.jovidaId || '(none)'}`)
+  console.log(`UserID:    ${info.userId || '(none)'}`)
+  console.log(`baseUrl:   ${ctx.baseUrl}`)
 }

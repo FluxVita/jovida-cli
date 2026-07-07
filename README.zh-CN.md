@@ -58,6 +58,11 @@ jovida login
 jovida whoami
 ```
 
+**5. 提议进阶配置(可选,先问再做)。** 安装到此完成;接下来把两件你能顺手配好的事告诉用户,用户想要才动手:
+
+- **终端里的待办提醒** —— 你的宿主若有 statusline 或 prompt hook(Claude Code 就有),`jovida due --brief` 能自动露出逾期/临期待办。配置方法见下文「在终端 / TUI agent 里收到待办提醒」一节(或 `jovida help due`)。
+- **导入飞书待办** —— 用户若在用飞书任务,`jovida import lark` 能把未完成任务搬过来(幂等、可反复跑;见 `jovida help import`)。先跑 `--dry-run` 给用户看会导入什么。
+
 此后按 **[`SKILL.md`](./SKILL.md)** 驱动 CLI。会话自动续期;之后任何命令以 `2`(`NOT_SIGNED_IN`)退出,就按第 3 步同样的方式再给用户登录一次。
 
 ---
@@ -81,8 +86,32 @@ jovida complete <entry_id>
 
 ## 命令
 
-`create` · `list` · `view` · `update` · `complete` · `reopen` · `subtask` · `delete` · `login` · `logout` · `whoami`。
+`create` · `list` · `due` · `view` · `update` · `complete` · `reopen` · `subtask` · `delete` · `import` · `login` · `logout` · `whoami`。
 `jovida help` 列出用法;[`SKILL.md`](./SKILL.md) 说明参数与字段约定。
+
+`jovida import lark` 把你飞书里未完成的「我的任务」单向导入 Jovida(幂等,可反复跑/定时跑;此前导入的任务在飞书完成后,重跑会把 Jovida 侧也标记完成)。数据源走官方 `lark-cli`(`npm i -g @larksuite/cli && lark-cli auth login --domain task`);详见 `jovida help import`。
+
+## 在终端 / TUI agent 里收到待办提醒
+
+`jovida due` 是只读的「当下要紧事」雷达:已逾期的待办 + 截止**或提醒**落在窗口内(默认 24h)的待办。它走本地短时快照缓存(60s;经 CLI 的任何写操作会立即失效),缓存过期后也先用一个极小的版本探测续期、数据真变了才全量重拉,每次输入 / statusline 刷新都调也不心疼。`--brief` 输出单行——无事**输出空**、出错**静默**(exit 0),不会弄脏状态栏。
+
+接进 Claude Code(其他带 hook/statusline 的 TUI agent 同理):
+
+```jsonc
+// ~/.claude/settings.json
+{
+  // statusline:一眼看到临期待办(接在你现有 statusline 命令后面)
+  "statusLine": { "type": "command", "command": "... ; JOVIDA_TIMEOUT_MS=5000 jovida due --brief" },
+  // hook:有临期待办时,单行提示注入到你下一条消息的上下文,agent 会在对话里主动提起
+  "hooks": {
+    "UserPromptSubmit": [
+      { "hooks": [ { "type": "command", "command": "JOVIDA_TIMEOUT_MS=5000 jovida due --brief", "timeout": 10 } ] }
+    ]
+  }
+}
+```
+
+在这些命令里设 `JOVIDA_TIMEOUT_MS`(毫秒),网络异常时不会卡住 TUI。若想在没开 agent 时也收到系统级通知,用 cron/launchd 定时跑 `jovida due --json`,再接你喜欢的通知器。
 
 ## 鉴权
 

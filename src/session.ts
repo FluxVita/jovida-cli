@@ -28,10 +28,11 @@ export interface DeviceAuth {
   interval: number
 }
 
+/** 对外叫法用产品术语:Jovida ID(账号号码,产品界面示人)/ UserID(内部数值主键)。 */
+/* ucenter 线上的 JSON 字段仍是 vitaHao / vitaId(平台历史名),只在解析处映射,别外泄。 */
 export interface UserInfo {
-  vitaId: string
-  vitaHao: string
-  entitlement: string
+  userId: string // ← ucenter user.vitaId
+  jovidaId: string // ← ucenter user.vitaHao
 }
 
 interface PassportResponse {
@@ -41,7 +42,6 @@ interface PassportResponse {
 }
 interface UserInfoResponse {
   user?: { vitaId?: string | number; vitaHao?: string }
-  subscription?: { entitlement?: string }
 }
 
 /** 未登录 / 会话失效。CLI 不回退匿名。 */
@@ -149,7 +149,7 @@ export class Session {
     if (!raw) throw new Error('empty token')
     this.api.setToken(raw)
     const info = await this.fetchUserInfo('That token is not a valid signed-in session.')
-    const rec: TokenRecord = { raw, vitaId: info.vitaId, accessDur: 0, refreshDur: 0, receivedAt: nowSec() }
+    const rec: TokenRecord = { raw, vitaId: info.userId, accessDur: 0, refreshDur: 0, receivedAt: nowSec() }
     setToken(rec)
     return rec
   }
@@ -191,9 +191,8 @@ export class Session {
       throw e
     }
     return {
-      vitaId: String(resp.user?.vitaId ?? ''),
-      vitaHao: resp.user?.vitaHao ?? '',
-      entitlement: resp.subscription?.entitlement ?? ''
+      userId: String(resp.user?.vitaId ?? ''),
+      jovidaId: resp.user?.vitaHao ?? ''
     }
   }
 

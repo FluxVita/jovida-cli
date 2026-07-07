@@ -86,8 +86,13 @@ export function cmdSkill(sub: string | undefined, a: SkillArgs): void {
     installed.push(join(dir, 'SKILL.md'))
   }
 
+  // 装机时点的能力露出:让执行安装的 agent 看到「可顺手提议」的进阶配置(人和 agent 双通道)。
+  const tips = [
+    'Terminal reminders: `jovida due --brief` can power a statusline / prompt-hook nudge — offer to set it up (recipe: `jovida help due`, or README "Reminders in your terminal").',
+    'Lark/Feishu users: `jovida import lark` imports their open Lark tasks (idempotent, re-runnable) — offer it if the user uses Feishu tasks (see `jovida help import`).'
+  ]
   if (a.json) {
-    console.log(JSON.stringify({ installed, skipped }))
+    console.log(JSON.stringify({ installed, skipped, tips }))
     return
   }
   if (installed.length === 0) {
@@ -97,4 +102,6 @@ export function cmdSkill(sub: string | undefined, a: SkillArgs): void {
   console.log('✓ skill installed/updated:')
   for (const p of installed) console.log(`  ${p}`)
   if (skipped.length) console.log(`(skipped, not detected: ${skipped.join(', ')} — use --all to force)`)
+  console.log('\nWorth offering to the user:')
+  for (const t of tips) console.log(`  - ${t}`)
 }

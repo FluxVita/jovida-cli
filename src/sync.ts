@@ -2,7 +2,7 @@
 // 走后端 v2 统一对象接口:数据装在 TodoItemDataset.items(以 itemType 判别 entry/recurring)。
 // 请求形与后端一致:PUT={ dataset:{items}, baseServerVersion };GET={ expectedServerVersion, pageToken, snapshotToken };均 proto3-JSON。
 import { ApiClient, ApiError } from './api'
-import { getLastServerVersion, setLastServerVersion } from './state'
+import { getLastServerVersion, setLastServerVersion, writeSnapshotCache, invalidateSnapshotCache } from './state'
 import {
   entryToItem,
   recurringToItem,
@@ -16,6 +16,7 @@ import type { TodoEntry, TodoRecurring } from './core/types'
 const PUT = '/jov/todo/v2/put_todo_snapshot'
 const GET = '/jov/todo/v2/get_todo_snapshot'
 const DELETE = '/jov/todo/v2/delete_todo_item'
+const VERSION = '/jov/todo/v2/get_todo_version'
 const MAX_CONFLICT = 3 // put 409(落后)→pull→重试
 const MAX_EXPIRED = 3 // get 409(分页快照过期)→首页重拉
 
@@ -28,12 +29,19 @@ export interface Snapshot {
 export class SyncClient {
   constructor(private api: ApiClient) {}
 
+  /** 轻量版本探测(get_todo_version):只回一个版本号。给 `due` 的过期缓存续期用,免掉无谓的全量拉取。 */
+  async getServerVersion(): Promise<number> {
+    const r = await this.api.post<{ serverVersion?: string | number }>(VERSION, {})
+    return r.serverVersion != null ? Number(r.serverVersion) : 0
+  }
+
   /** 全量拉取(CLI storeless:每次强制全量,expectedServerVersion=0)。处理分页 + 409 SNAPSHOT_EXPIRED 重拉。 */
   async pull(): Promise<Snapshot> {
     for (let attempt = 0; attempt < MAX_EXPIRED; attempt++) {
       const r = await this.pullOnce()
       if (r) {
         setLastServerVersion(r.serverVersion)
+        writeSnapshotCache(r) // 任何全量 pull 都顺手刷新 `jovida due` 的缓存
         return r
       }
     }
@@ -78,6 +86,7 @@ export class SyncClient {
           dataset: { items: items.map(entryToItem) },
           baseServerVersion: String(getLastServerVersion())
         })
+        invalidateSnapshotCache() // 写成功 → 缓存过时
         return
       } catch (e) {
         if (e instanceof ApiError && e.status === 409 && attempt < MAX_CONFLICT) {
@@ -97,6 +106,7 @@ export class SyncClient {
           dataset: { items: items.map(recurringToItem) },
           baseServerVersion: String(getLastServerVersion())
         })
+        invalidateSnapshotCache()
         return
       } catch (e) {
         if (e instanceof ApiError && e.status === 409 && attempt < MAX_CONFLICT) {
@@ -112,5 +122,6 @@ export class SyncClient {
   // 快照过滤掉已删行,删除契约仍是「快照中缺失 ⇒ 已删」;同 id 再 put 会就地复活(覆盖、清 deleted_at)。
   async deleteObjects(ids: string[]): Promise<void> {
     for (const itemId of ids) await this.api.post(DELETE, { itemId })
+    if (ids.length) invalidateSnapshotCache()
   }
 }

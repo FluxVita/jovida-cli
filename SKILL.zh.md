@@ -42,6 +42,7 @@ allowed-tools: Bash(jovida:*)
 语义见下;确切参数跑 `jovida <命令> --help`。
 
 - **`jovida list`** —— 列出待办(默认今天的 pending)。**空结果不等于「用户没有待办」**——那只是今天的未完成项;在告诉用户「没有」之前,先用 `--scope all --status all`(或日期区间)放宽。用 scope/status/range 放宽,或用 **`--query <文本>`(标题+描述)、`--category`、`--priority` 搜索/过滤**(带任一过滤时 scope+status 默认放开到 *all*)。JSON 带 **`total` + `has_more`**——若 `has_more` 为真说明被 `--limit` 截断了,应调大 `--limit` 或收窄查询,**别据此断定某条待办不存在**。加 `--full` 可一次拿全字段(无需再 `view`)。重复待办以带日期的**发生**呈现、带 `recurring_id` 标注:显式 `--scope range --from/--to` 列出该窗口内**每一次**发生;`today`/`upcoming` 只给每条例行的下一次发生。
+- **`jovida due`** —— 「当下要紧事」雷达:已逾期的待办 + 截止**或提醒**落在窗口内的待办(默认 24h;`--within 2h`/`90m`/`1d`)。只读、走本地短时缓存,高频调用也便宜——用户问「有什么急事 / 快到期的?」时优先用它,别再从 `list` 里自己拼。`--brief` 输出单行(无事输出空、出错静默),专为 statusline 和 prompt hook 设计。
 - **`jovida view <entry_id>`** —— 单条待办完整详情(description、subtasks、提醒……)。改传重复待办的 `recurring_id` 则回看它的重复规则。
 - **`jovida create "<标题>"`** —— 新建一条待办(**一次一条**;多条多次跑)。给它加重复规则则成为一条重复待办(返回 `recurring_id`)。
 - **`jovida update <entry_id>`** —— 改待办的字段;**只改你传的字段**。`--remind` / `--subtask` 整列替换(子任务会按标题保留同名项的完成状态;单条子任务用下面的 `subtask`)。传 `recurring_id` 改重复待办(含重复规则);传**发生 id**(取自 `list`)则只改那一次发生(会把那天材料化;例行与其它发生不动)。要停掉例行的后续发生,给重复待办设 `--until`。传值只会设置/替换;要**清空**某字段(去掉时间、清空所有提醒、清空分组…)用对应的 `--clear-*`(见 `--help`)。
@@ -49,6 +50,7 @@ allowed-tools: Bash(jovida:*)
 - **`jovida reopen <id> [<id> …]`** —— 重新打开已完成的待办(`complete` 的逆操作)。
 - **`jovida subtask check|uncheck|add|rm <entry_id> …`** —— 勾选/取消/新增/删除单条子任务(按 id 或 `view` 里的 1-based 序号寻址)。
 - **`jovida delete <id> [<id> …]`** —— 永久删除(一次传多个 id;**无撤回**)。要停掉一条例行,删它的 `recurring_id`——不能删单次发生。
+- **`jovida import lark`** —— 单向、幂等地导入用户飞书里未完成的「我的任务」(需已装 `lark-cli` 并登录:`lark-cli auth login --domain task`)。可放心重跑:绝不重复建、飞书侧完成会同步到 Jovida、绝不回写飞书。用户只想先看看会导入什么时,先跑 `--dry-run`。
 - **`jovida whoami` / `login` / `logout`** —— 会话。**由你**跑 `jovida login`(放后台);它打印一条一键 `…/device?code=…` URL 并自动轮询到用户批准。浏览器在用户机器上弹出了就让他在那批准;没弹出(云沙盒 / 远程)就把这条 URL 转给用户去别处批准。绝不让用户自己跑 `jovida login`——它必须跑在你所在的机器上。
 
 ## Workflows——如何组合命令
@@ -62,6 +64,7 @@ allowed-tools: Bash(jovida:*)
 - **完成或清理:** 先 `jovida list` 看有哪些开着,再 `jovida complete`(做完)或 `jovida delete`(移除)——相关 id 一次全传。除非该项压根不是真任务,否则优先 `complete` 而非 `delete`;若误标完成,`jovida reopen` 可撤回(而 `delete` 无法撤回)。
 - **例行(重复):** 给一条待办加重复规则,建一次即可。之后它在 `list` 里按各发生日期呈现(带 `recurring_id` 标注);`complete` 某次发生即勾掉那一天。几个不规则日期则建多条单独待办。
 - **「我手头有啥?」** `jovida list`(今天,或放宽 scope),从 JSON 里汇总。只读——别写任何东西。
+- **「有什么急事?」/ 上下文里出现了临期提示:** `jovida due --json` 拿全貌(逾期 + 临期,含时刻),再口语化转述。用户接着要动手(「推到明天」「标记完成」)就照常走 `update`/`complete`。
 
 ## 纪律
 

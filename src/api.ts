@@ -9,6 +9,7 @@ export interface ApiClientConfig {
   appId: string // Vita-Aid
   deviceId: string // Vita-Did
   platform: string // Vita-Platform
+  timeoutMs?: number // 单请求超时;0/缺省 = 不限(statusline/hook 场景经 JOVIDA_TIMEOUT_MS 收紧)
 }
 
 export class ApiError extends Error {
@@ -63,7 +64,8 @@ export class ApiClient {
       res = await fetch(`${this.cfg.baseUrl}${path}`, {
         method,
         headers: this.headers(),
-        body: method === 'GET' ? undefined : JSON.stringify(body ?? {})
+        body: method === 'GET' ? undefined : JSON.stringify(body ?? {}),
+        signal: this.cfg.timeoutMs && this.cfg.timeoutMs > 0 ? AbortSignal.timeout(this.cfg.timeoutMs) : undefined
       })
     } catch (e) {
       // fetch 本身抛错(DNS/连接拒绝/超时)→ 网络故障,归 ApiError(status 0) → exit 3,
