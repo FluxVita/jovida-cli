@@ -101,7 +101,10 @@ Wire it into Claude Code (same idea works for any TUI agent with hooks/statuslin
 // ~/.claude/settings.json
 {
   // statusline: show due todos at a glance (append to your existing statusline command)
-  "statusLine": { "type": "command", "command": "... ; JOVIDA_TIMEOUT_MS=5000 jovida due --brief" },
+  // --ansi = layered colors (overdue red, time yellow, title dimmed)
+  // --link = OSC 8 hyperlink: the segment becomes Cmd+clickable (opens jovida.ai) in
+  //          terminals that support it — Claude Code's statusline passes it through
+  "statusLine": { "type": "command", "command": "... ; JOVIDA_TIMEOUT_MS=5000 jovida due --brief --ansi --link" },
   // hook: when something is due, its one-liner is injected as context on your next message,
   // so the agent brings it up in conversation
   "hooks": {

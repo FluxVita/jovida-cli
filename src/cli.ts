@@ -32,6 +32,8 @@ const BOOLEAN_FLAGS = new Set([
   'help',
   'brief',
   'fresh',
+  'ansi',
+  'link', // 无值 = 默认 jovida.ai;也可 --link <url>
   'dry-run',
   'clear-when',
   'clear-remind',
@@ -192,8 +194,13 @@ A date-only todo counts as due by the end of its day.
 
 Options:
   --within <dur>   window: 90m | 2h | 1d | a plain number = hours (default 24h)
-  --brief          one line for statuslines/hooks: "⏰ 2 overdue · 14:00 pay rent +1"
+  --brief          one line for statuslines/hooks: "🐰 2 overdue · 14:00 pay rent +1"
                    prints NOTHING when nothing is due; never fails (errors → silent, exit 0)
+  --ansi           with --brief: layered colors for statuslines (overdue red, time yellow,
+                   title dimmed). Keep it OFF for prompt hooks — context should be plain text.
+  --link [url]     with --brief: wrap the line in an OSC 8 hyperlink so terminals that
+                   support it (iTerm2, WezTerm, Kitty, Ghostty; Claude Code passes it
+                   through) make the segment Cmd+clickable. Default target: jovida.ai.
   --fresh          bypass the snapshot cache and pull now
   --ttl <secs>     snapshot cache TTL (default 60). An expired cache is revalidated with a
                    cheap version probe first — a full re-pull happens only when data actually
@@ -201,7 +208,7 @@ Options:
   --json           {overdue, upcoming, counts, within_secs, cache_age_secs}
 
 Wire it into Claude Code (or any TUI agent):
-  statusline  — append \`jovida due --brief\` to your status line command
+  statusline  — append \`jovida due --brief --ansi --link\` to your status line command
   hook        — UserPromptSubmit hook running \`jovida due --brief\`: when something is
                 due its one-liner is injected as context, so the agent reminds you in-chat
   Set JOVIDA_TIMEOUT_MS (e.g. 5000) in those commands so a bad network can't stall the TUI.
@@ -432,6 +439,8 @@ async function main(): Promise<void> {
         within: str(flags.within),
         ttl: num(flags.ttl),
         brief: flags.brief === true,
+        ansi: flags.ansi === true,
+        link: flags.link === true ? true : str(flags.link),
         fresh: flags.fresh === true,
         json
       })

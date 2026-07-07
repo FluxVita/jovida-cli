@@ -101,7 +101,9 @@ jovida complete <entry_id>
 // ~/.claude/settings.json
 {
   // statusline:一眼看到临期待办(接在你现有 statusline 命令后面)
-  "statusLine": { "type": "command", "command": "... ; JOVIDA_TIMEOUT_MS=5000 jovida due --brief" },
+  // --ansi = 分层配色(逾期红/时间黄/标题弱化)
+  // --link = OSC 8 超链接:支持的终端里这段可 Cmd+点击打开 jovida.ai(Claude Code 的 statusline 透传)
+  "statusLine": { "type": "command", "command": "... ; JOVIDA_TIMEOUT_MS=5000 jovida due --brief --ansi --link" },
   // hook:有临期待办时,单行提示注入到你下一条消息的上下文,agent 会在对话里主动提起
   "hooks": {
     "UserPromptSubmit": [

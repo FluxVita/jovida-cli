@@ -8,7 +8,7 @@ import type { Snapshot } from '../sync'
 
 const DAY = 86400
 const DEFAULT_TTL = 60
-const BRIEF_TITLE_MAX = 24
+const BRIEF_TITLE_COLS = 24 // 标题截断上限,按**显示列宽**(CJK 每字 2 列),不是字符数
 const LIST_CAP = 20 // json/human 列表上限(计数仍为全量)
 
 export interface DueArgs {
@@ -16,6 +16,8 @@ export interface DueArgs {
   ttl?: number // 缓存 TTL 秒;默认 60
   fresh?: boolean // 跳过缓存强制拉取
   brief?: boolean // 单行输出(statusline/hook);无事输出空、出错静默
+  ansi?: boolean // 仅配合 --brief:自带分层配色(overdue 红/时间黄/标题 dim),给 statusline 用
+  link?: string | boolean // 仅配合 --brief:OSC 8 超链接包裹整行(true=jovida.ai;或给自定义 URL)
   json?: boolean
 }
 
@@ -53,9 +55,29 @@ function fmtNext(it: DueItem, nowSec: number): string {
   const d = new Date(belongSec * 1000)
   return `${d.getMonth() + 1}/${d.getDate()}`
 }
-function truncate(s: string, n: number): string {
-  return s.length > n ? `${s.slice(0, n - 1)}…` : s
+// 按终端显示宽度截断:CJK/全角(≥U+2E80)占 2 列,否则 1 列。按字符数截会让中文标题铺满状态栏。
+function truncateCols(s: string, cols: number): string {
+  let w = 0
+  let out = ''
+  for (const ch of s) {
+    const cw = (ch.codePointAt(0) ?? 0) >= 0x2e80 ? 2 : 1
+    if (w + cw > cols - 1) return `${out}…`
+    out += ch
+    w += cw
+  }
+  return s
 }
+
+// --ansi 时给 statusline 分层上色;纯 --brief(hook 注入上下文)保持素文本。
+const paint = (ansi: boolean | undefined, code: string, s: string): string =>
+  ansi ? `\u001b[${code}m${s}\u001b[0m` : s
+
+// --link:OSC 8 超链接(终端标准;iTerm2/WezTerm/Kitty/Ghostty 等支持 Cmd+点击,
+// Claude Code statusline 实测透传)。不支持的终端按未知序列忽略,只是不可点。
+const DEFAULT_LINK = 'https://jovida.ai'
+const OSC = '\u001b]8;;'
+const ST = '\u001b\\'
+const hyperlink = (url: string, s: string): string => `${OSC}${url}${ST}${s}${OSC}${ST}`
 
 function itemJson(it: DueItem): Record<string, unknown> {
   return {
@@ -99,16 +121,22 @@ async function run(ctx: Ctx, a: DueArgs): Promise<void> {
   })
 
   if (a.brief) {
-    // 单行:`⏰ N overdue · HH:MM 标题 +M`;无事输出空(statusline/hook 均以空为「不显示/不注入」)。
+    // 单行:`🐰 N overdue · HH:MM 标题 +M`;无事输出空(statusline/hook 均以空为「不显示/不注入」)。
+    // 配色策略(--ansi):红=overdue(唯一的警报色),黄=时间(扫一眼抓的重点),dim=标题/计数(弱化)。
     const parts: string[] = []
-    if (r.overdue.length) parts.push(`${r.overdue.length} overdue`)
+    if (r.overdue.length) parts.push(paint(a.ansi, '31', `${r.overdue.length} overdue`))
     if (r.upcoming.length) {
       const first = r.upcoming[0]
       const more = r.upcoming.length - 1
       const bell = first.nextIsReminder ? '🔔 ' : ''
-      parts.push(`${fmtNext(first, nowSec)} ${bell}${truncate(first.entry.title, BRIEF_TITLE_MAX)}${more > 0 ? ` +${more}` : ''}`)
+      const title = truncateCols(first.entry.title, BRIEF_TITLE_COLS) + (more > 0 ? ` +${more}` : '')
+      parts.push(`${paint(a.ansi, '33', fmtNext(first, nowSec))} ${bell}${paint(a.ansi, '2', title)}`)
     }
-    if (parts.length) console.log(`⏰ ${parts.join(' · ')}`)
+    if (parts.length) {
+      let line = `🐰 ${parts.join(' · ')}` // 🐰 = Jovida 的兔子,statusline 里的品牌记号
+      if (a.link) line = hyperlink(typeof a.link === 'string' ? a.link : DEFAULT_LINK, line)
+      console.log(line)
+    }
     return
   }
 
