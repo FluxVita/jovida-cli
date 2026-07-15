@@ -20,6 +20,7 @@ import { toListItem } from './core/convert'
 import { drainEvents, ensureEventsDir, EVENTS_DIR } from './core/rules'
 import { notify } from './notify'
 import { runRules, activeRuleCount } from './rules'
+import { startPolling, activePollCount } from './poll'
 
 const DIR = process.env['JOVIDA_HOME'] ?? join(homedir(), '.jovida', 'cli')
 const PID_FILE = join(DIR, 'daemon.pid')
@@ -88,6 +89,7 @@ interface DaemonStatus {
   overdue: number
   upcoming: number
   rules: number
+  polls: number
   updatedAt: number
 }
 function writeStatus(s: DaemonStatus): void {
@@ -175,6 +177,7 @@ export async function runDaemon(ctx: Ctx): Promise<void> {
   let rescanTimer: NodeJS.Timeout | null = null
   let spoolWatcher: FSWatcher | null = null
   let draining = false
+  let stopPolling: (() => void) | null = null
 
   const status: DaemonStatus = {
     pid: process.pid,
@@ -185,11 +188,13 @@ export async function runDaemon(ctx: Ctx): Promise<void> {
     overdue: 0,
     upcoming: 0,
     rules: 0,
+    polls: 0,
     updatedAt: nowSec()
   }
   const flushStatus = (): void => {
     status.updatedAt = nowSec()
     status.rules = activeRuleCount()
+    status.polls = activePollCount()
     writeStatus(status)
   }
 
@@ -327,6 +332,7 @@ export async function runDaemon(ctx: Ctx): Promise<void> {
     if (momentTimer) clearTimeout(momentTimer)
     if (rescanTimer) clearInterval(rescanTimer)
     if (spoolWatcher) spoolWatcher.close()
+    if (stopPolling) stopPolling()
     removePid()
   }
   const onSignal = (): void => {
@@ -351,6 +357,9 @@ export async function runDaemon(ctx: Ctx): Promise<void> {
   } catch (e) {
     logLine(`spool watch unavailable (${(e as Error).message}); falling back to periodic drain`)
   }
+
+  // poll 源:定时跑 check,上升沿(false→true)合成信封走同一条规则引擎(与 todo/emit 同轨)。
+  stopPolling = startPolling((env) => runRules(env, logLine), logLine)
 
   flushStatus()
   try {

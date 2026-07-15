@@ -168,7 +168,8 @@ export function cmdRules(a: RulesArgs): void {
         envelope: { source: 'string', type: 'string', title: 'string?', id: 'string?', at: 'unix-seconds?', data: 'object?' },
         sources: {
           todo: { note: 'built-in; the daemon emits these', types: TODO_EVENT_TYPES, dataFields: TODO_DATA_FIELDS },
-          custom: { note: "any `jovida emit <source> <type> [--title] [--id] [--data <json>]` — a hook/cron/script becomes a source" }
+          push: { note: "any `jovida emit <source> <type> [--title] [--id] [--data <json>]` — a hook/cron/script becomes a source" },
+          poll: { note: "`jovida poll add …` runs a check on an interval and emits <source>.<type> on its false→true edge (weather/CI/file conditions); see 'jovida poll spec'" }
         },
         rule: {
           when: '"<source>.<type>" | "<source>.*" | "<source>"',

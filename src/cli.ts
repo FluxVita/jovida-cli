@@ -6,6 +6,7 @@ import { cmdDue } from './commands/due'
 import { cmdWatch } from './commands/watch'
 import { cmdDaemon } from './commands/daemon'
 import { cmdRules } from './commands/rules'
+import { cmdPoll } from './commands/poll'
 import { cmdEmit } from './commands/emit'
 import { cmdImport } from './commands/import'
 import { cmdView } from './commands/view'
@@ -122,6 +123,9 @@ Usage:
   jovida emit <source> <type> [--title <s>] [--id <s>] [--data <json>]
                # push a custom event into the engine — any hook/cron/script becomes a trigger source
                # (see: jovida help rules)
+  jovida poll list|add|rm|enable|disable|test
+               # a polling source: run a check on an interval, emit an event on its false→true edge
+               # e.g. jovida poll add --source weather --type rain --check '...' --interval 30m
   jovida import lark [--category <s>] [--dry-run] [--json]
                # one-way import of your incomplete Lark/Feishu tasks (idempotent, re-runnable)
   jovida view <entry_id|recurring_id> [--fresh] [--json]
@@ -300,8 +304,10 @@ Event sources (the 'source' of an envelope):
   todo        built in — the daemon emits todo.<change> and todo.<moment>:
               todo.added | todo.updated | todo.completed | todo.reopened | todo.deleted
               todo.reminder | todo.overdue   (local time moments)
-  <your own>  anything that runs 'jovida emit <source> <type> …' — a Claude Code hook, cron, a script.
-              (poll / long-lived stream sources are planned; today, push via 'jovida emit'.)
+  <your own>  push:  anything that runs 'jovida emit <source> <type> …' — a Claude Code hook, cron, a script.
+              poll:  'jovida poll add …' runs a check on an interval and emits on its false→true edge
+                     (weather/CI/file conditions; see: jovida help poll).
+              (long-lived stream sources are planned.)
 
 --when <source.type>     which events fire this rule. "todo.completed", "claude.commit",
                          "weather.*" (any type of that source), or just "weather" (same as .*)
@@ -352,6 +358,43 @@ Examples:
 Wire it into Claude Code (~/.claude/settings.json) — emit claude.commit after every git commit:
   "hooks": { "PostToolUse": [{ "matcher": "Bash", "hooks": [{ "type": "command",
     "command": "jq -er 'select(.tool_input.command|test(\\"git commit\\")).tool_input.command' >/dev/null && jovida emit claude commit --title \\"$(git log -1 --format=%s)\\"" }]}] }
+`,
+  poll: `jovida poll — a polling source: check a condition on an interval, emit an event on its rising edge
+
+Usage:
+  jovida poll list [--json]
+  jovida poll add --source <s> --type <s> --check '<sh -c cmd>' --interval <30s|5m|1h> [--title <s>] [--name <s>] [--disabled]
+  jovida poll add --spec '<poll-json>' [--dry-run]        # apply a full poll object (agent-friendly)
+  jovida poll rm <id>
+  jovida poll enable <id> | disable <id>
+  jovida poll test (<id> | --source <s> --type <s> --check '<cmd>' | --spec <json>)   # run the check once, show result
+  jovida poll spec [--json]                               # print the poll-source protocol (for agents)
+
+A poll source is the third way to feed the trigger engine (alongside built-in 'todo' and 'jovida emit').
+It's for conditions nothing pushes to you — weather, CI status, a file appearing, a URL going down. The
+**daemon** runs each check on its interval; you react to what it emits with an ordinary rule.
+
+  --check '<cmd>'    run 'sh -c <cmd>'. exit 0 = condition TRUE, non-zero = false. Its stdout is carried
+                     on the emitted envelope as data.output (matchable via --where data.output, template {data.output}).
+  --interval <dur>   how often to check: 30s | 5m | 1h | a plain number of seconds.
+  --source/--type    the envelope it emits: a rule with --when <source>.<type> reacts.
+  --title <s>        envelope title (defaults to the check's first stdout line, then the source name).
+
+Edge-triggered: it emits ONCE when the condition flips false→true — not repeatedly while true. When it flips
+back to false it re-arms. State persists across daemon restarts, so a restart mid-condition does NOT re-fire.
+(A brand-new poll whose condition is already true fires on its first check.)
+
+Two steps — define the source, then react to it:
+  jovida poll add --source weather --type rain --interval 30m \\
+    --check 'curl -sf "https://wttr.in/Hangzhou?format=%C" | grep -qiE "rain|drizzle|shower"'
+  jovida rules add --when weather.rain --exec 'jovida create "记得带伞 ☔️" --when "$JOVIDA_TODAY" --priority high'
+
+More examples:
+  # CI on this branch went red → make a fix-the-build todo
+  jovida poll add --source ci --type broken --interval 5m --check 'test "$(gh run list -L1 --json conclusion -q ".[0].conclusion")" = failure'
+  jovida rules add --when ci.broken --exec 'jovida create "修复 CI：$JOVIDA_TITLE" --priority high'
+  # dry-run a check before saving it
+  jovida poll test --source weather --type rain --check 'curl -sf "https://wttr.in/?format=%C" | grep -qi rain'
 `,
   import: `jovida import — one-way import from an external source (currently: Lark/Feishu tasks)
 
@@ -623,6 +666,22 @@ async function main(): Promise<void> {
         title: str(flags.title),
         id: str(flags.id),
         data: str(flags.data),
+        json
+      })
+      break
+    case 'poll':
+      cmdPoll({
+        action: positionals[0],
+        positionals: positionals.slice(1),
+        spec: str(flags.spec),
+        dryRun: flags['dry-run'] === true,
+        name: str(flags.name),
+        source: str(flags.source),
+        type: str(flags.type),
+        check: str(flags.check),
+        interval: str(flags.interval),
+        title: str(flags.title),
+        disabled: flags.disabled === true,
         json
       })
       break
