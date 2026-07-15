@@ -11,3 +11,7 @@ docs/
 # 本地 skill 安装产物(npx skills add / jovida skill install):锁文件 + 装进 .agents 的仓库副本
 skills-lock.json
 .agents/
+
+# 本地测试用的 JOVIDA_HOME(含 token/快照/守护 pid,勿提交)
+.jovida-dev/
+.jovida/
