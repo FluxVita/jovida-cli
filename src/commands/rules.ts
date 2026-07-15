@@ -7,6 +7,9 @@ import {
   renderTemplate,
   parseWhen,
   newRuleId,
+  validateRuleSpec,
+  TODO_EVENT_TYPES,
+  TODO_DATA_FIELDS,
   RULES_FILE,
   type Rule,
   type Action,
@@ -15,8 +18,10 @@ import {
 } from '../core/rules'
 
 export interface RulesArgs {
-  action?: string // list | add | rm | enable | disable | test
+  action?: string // list | add | rm | enable | disable | test | spec
   positionals: string[] // rule id(rm/enable/disable)
+  spec?: string // add: 整条 rule JSON(agent 友好,替代拼 flag)
+  dryRun?: boolean // add: 只校验+预览,不落盘
   name?: string
   when?: string // 源.类型
   where?: string[] // field=expr(可重复)
@@ -119,19 +124,32 @@ export function cmdRules(a: RulesArgs): void {
     }
 
     case 'add': {
-      if (!a.when) throw new Error('add needs --when <source.type> (e.g. --when todo.completed, --when claude.commit)')
-      parseWhen(a.when) // 校验形状
-      const actions = buildActions(a)
-      if (actions.length === 0)
-        throw new Error('add needs an action: --exec <cmd> (repeatable) and/or --notify-title/--notify-message')
-      const rule: Rule = {
-        id: newRuleId(),
-        name: a.name,
-        when: a.when,
-        where: parseWhere(a.where),
-        do: actions,
-        enabled: a.disabled !== true,
-        cooldown_sec: a.cooldown && a.cooldown > 0 ? a.cooldown : undefined
+      // 两种入口:--spec 传整条 rule JSON(agent 友好,校验后落),或拼 flag(人友好)。
+      let rule: Rule
+      if (a.spec) {
+        rule = validateRuleSpec(a.spec)
+        if (a.disabled) rule.enabled = false
+      } else {
+        if (!a.when) throw new Error('add needs --when <source.type> (or --spec <rule-json>)')
+        parseWhen(a.when) // 校验形状
+        const actions = buildActions(a)
+        if (actions.length === 0)
+          throw new Error('add needs an action: --exec <cmd> (repeatable) and/or --notify-title/--notify-message')
+        rule = {
+          id: newRuleId(),
+          name: a.name,
+          when: a.when,
+          where: parseWhere(a.where),
+          do: actions,
+          enabled: a.disabled !== true,
+          cooldown_sec: a.cooldown && a.cooldown > 0 ? a.cooldown : undefined
+        }
+      }
+      if (a.dryRun) {
+        // 只校验+预览,不落盘(agent 上线前自检)。
+        if (json) console.log(JSON.stringify({ valid: true, dryRun: true, rule }))
+        else console.log(`✓ valid (dry-run, not saved)\n${ruleSummary(rule)}`)
+        return
       }
       const rules = loadRules()
       rules.push(rule)
@@ -141,6 +159,34 @@ export function cmdRules(a: RulesArgs): void {
         console.log(
           `✓ added rule ${rule.id}\n${ruleSummary(rule)}\n(the running daemon picks it up within seconds; start one with 'jovida daemon start')`
         )
+      return
+    }
+
+    case 'spec': {
+      // 协议自描述(供 agent grounding):信封形状、内置 todo 源词汇、规则 schema、动作环境/模板。
+      const spec = {
+        envelope: { source: 'string', type: 'string', title: 'string?', id: 'string?', at: 'unix-seconds?', data: 'object?' },
+        sources: {
+          todo: { note: 'built-in; the daemon emits these', types: TODO_EVENT_TYPES, dataFields: TODO_DATA_FIELDS },
+          custom: { note: "any `jovida emit <source> <type> [--title] [--id] [--data <json>]` — a hook/cron/script becomes a source" }
+        },
+        rule: {
+          when: '"<source>.<type>" | "<source>.*" | "<source>"',
+          where: '{ "<field>": "<matcher>" } — AND-ed; field resolves top-level then data (bare "category" works); matcher: "~regex" | "=exact" | "substring"',
+          do: '[ {"exec":"sh -c command"} | {"notify":{"title":"…","message":"…","subtitle":"…"}} ] — run in order',
+          enabled: 'boolean (default true)',
+          cooldown_sec: 'number? — min seconds between fires'
+        },
+        execEnv: ['JOVIDA_SOURCE', 'JOVIDA_TYPE', 'JOVIDA_TITLE', 'JOVIDA_ID', 'JOVIDA_AT', 'JOVIDA_TODAY', 'JOVIDA_TOMORROW', 'JOVIDA_<DATA_KEY>', 'JOVIDA_DATA'],
+        templatePlaceholders: { where: 'notify title/message/subtitle only', tokens: ['{title}', '{source}', '{type}', '{id}', '{data.x}', '{today}', '{tomorrow}'] },
+        safety: 'exec is NOT string-interpolated (injection-safe); pass data via $JOVIDA_* env vars + the envelope JSON on stdin. {…} templates are for notify only.',
+        apply: "jovida rules add --spec '<rule-json>' [--dry-run]"
+      }
+      if (json) {
+        console.log(JSON.stringify(spec))
+        return
+      }
+      console.log(JSON.stringify(spec, null, 2))
       return
     }
 
@@ -216,6 +262,6 @@ export function cmdRules(a: RulesArgs): void {
     }
 
     default:
-      throw new Error(`unknown rules action: ${action} (use list|add|rm|enable|disable|test)`)
+      throw new Error(`unknown rules action: ${action} (use list|add|rm|enable|disable|test|spec)`)
   }
 }

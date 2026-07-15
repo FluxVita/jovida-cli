@@ -8,6 +8,7 @@ import {
   parseWhen,
   renderTemplate,
   envToEnvVars,
+  validateRuleSpec,
   type Rule,
   type Envelope
 } from '../src/core/rules'
@@ -86,6 +87,27 @@ test('renderTemplate: {field} {data.x} {today} substitution, unknown → empty',
   assert.equal(renderTemplate('{source}.{type}: {title}', e), 'claude.commit: feat: x')
   assert.equal(renderTemplate('city={data.city} miss={nope}', e), 'city=HZ miss=')
   assert.match(renderTemplate('{today}', e), /^\d{4}-\d{2}-\d{2}$/)
+})
+
+test('validateRuleSpec: valid object/string → normalized rule (id/enabled filled)', () => {
+  const r = validateRuleSpec('{"when":"claude.commit","where":{"title":"~^feat"},"do":[{"exec":"echo hi"}]}')
+  assert.equal(r.when, 'claude.commit')
+  assert.ok(r.id.startsWith('rul_'))
+  assert.equal(r.enabled, true)
+  assert.deepEqual(r.where, { title: '~^feat' })
+  // object when + explicit id/enabled preserved
+  const r2 = validateRuleSpec({ id: 'rul_x', when: { source: 'todo', type: 'completed' }, enabled: false, do: [{ notify: { title: 't' } }] })
+  assert.equal(r2.id, 'rul_x')
+  assert.equal(r2.when, 'todo.completed')
+  assert.equal(r2.enabled, false)
+})
+
+test('validateRuleSpec: clear errors for bad input', () => {
+  assert.throws(() => validateRuleSpec('not json'), /valid JSON/)
+  assert.throws(() => validateRuleSpec('[]'), /JSON object/)
+  assert.throws(() => validateRuleSpec('{"do":[{"exec":"x"}]}'), /needs "when"/)
+  assert.throws(() => validateRuleSpec('{"when":"todo.completed"}'), /at least one action/)
+  assert.throws(() => validateRuleSpec('{"when":"todo.completed","do":[{"exec":"x"}],"where":[]}'), /"where" must be/)
 })
 
 test('envToEnvVars: top-level + data flattened + JOVIDA_DATA', () => {

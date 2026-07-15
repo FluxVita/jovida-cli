@@ -64,6 +64,26 @@ Map the user's intent to a sequence; read before any change.
 - **"What's on my plate?"** `jovida list` (today, or widen the scope) and summarize from the JSON. Read-only — don't write anything.
 - **"Anything urgent?" / a due-soon nudge showed up in context:** `jovida due --json` for the full picture (overdue + due-soon with times), then relay it conversationally. If the user then wants to act ("push it to tomorrow", "mark it done"), continue with `update`/`complete` as usual.
 
+## Automations — authoring triggers ("when X, do Y")
+
+Beyond capturing todos, the user can ask for **standing automations**: "when I finish a 健身 todo, celebrate", "when I commit a feature, remind me to open a PR". You can author these — the CLI has a small trigger engine (a background daemon runs the rules).
+
+The engine speaks one **event envelope** `{ source, type, title?, id?, at?, data? }`. A **rule** matches an envelope by `when` (`<source>.<type>`) + optional `where` field filters, and runs `do` actions (`exec` a shell command, or `notify`). Built-in source `todo` fires on `todo.added/updated/completed/reopened/deleted` and `todo.reminder/overdue`; **any other source** is anything that runs `jovida emit <source> <type> …` (a git hook, cron, a script).
+
+To author reliably, don't guess the schema — **ground on it first**:
+
+1. `jovida rules spec --json` — the envelope, the built-in `todo` vocabulary, the rule schema, matchers (`~regex` / `=exact` / substring), the exec env vars, and the safety rule (exec is **not** string-interpolated — pass data via `$JOVIDA_*` env vars + the envelope JSON on stdin; `{…}` templates are for `notify` only).
+2. Produce a rule object, then **validate before applying**: `jovida rules add --spec '<rule-json>' --dry-run`.
+3. Apply it (drop `--dry-run`). Manage with `jovida rules list | rm <id> | enable/disable <id>`; preview matches with `jovida rules test`.
+
+Example — "when I commit a feature, remind me to open a PR" (the commit event comes from a Claude Code / git hook that runs `jovida emit claude commit --title "$(git log -1 --format=%s)"`):
+
+```
+jovida rules add --spec '{"name":"提交功能→开PR","when":"claude.commit","where":{"title":"~^feat"},"do":[{"exec":"jovida create \"推送并开 PR：$JOVIDA_TITLE\" --when \"$JOVIDA_TODAY\" --priority high"}]}'
+```
+
+The rules edit `~/.jovida/cli/rules.json` (hand-editable too); a running daemon (`jovida daemon start`) picks up changes within seconds. Only author automations the user actually asked for; describe what a rule will do before applying it.
+
 ## Discipline
 
 - Quote the title and any value containing spaces. Keep titles/descriptions **single-line plain text** — newlines and shell metacharacters passed as arguments get mangled.

@@ -281,9 +281,15 @@ Needs a backend with the SSE ingress (\`/jov/msghub/v1/sse\`). Requires \`jovida
 Usage:
   jovida rules list [--json]
   jovida rules add --when <source.type> [--where <field=expr> ...] <action ...> [--cooldown <sec>] [--disabled]
+  jovida rules add --spec '<rule-json>' [--dry-run]        # apply a full rule object (agent-friendly)
   jovida rules rm <id>
   jovida rules enable <id> | disable <id>
   jovida rules test (--source <s> --type <s> [--title <s>] [--data <json>] | --envelope <json>)
+  jovida rules spec [--json]                               # print the trigger protocol (for agents to ground on)
+
+For agents / programmatic authoring: run 'jovida rules spec --json' to learn the envelope, the built-in
+'todo' source vocabulary, the rule schema and matchers; produce a rule object; validate it with
+'jovida rules add --spec <json> --dry-run'; then apply it (drop --dry-run).
 
 The engine speaks one thing: an event **envelope** { source, type, title?, id?, at?, data? }.
 A rule matches an envelope by source.type (+ optional field filters) and runs actions. The **daemon**
@@ -591,6 +597,8 @@ async function main(): Promise<void> {
       cmdRules({
         action: positionals[0],
         positionals: positionals.slice(1),
+        spec: str(flags.spec),
+        dryRun: flags['dry-run'] === true,
         name: str(flags.name),
         when: str(flags.when),
         where: arr(flags.where),

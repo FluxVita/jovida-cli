@@ -121,6 +121,42 @@ export function saveRules(rules: Rule[]): void {
   writeFileSync(RULES_FILE, JSON.stringify({ rules } satisfies RulesFile, null, 2) + '\n', { mode: 0o600 })
 }
 
+// 内置 `todo` 源的词汇(供 agent grounding / 规格自描述)。
+export const TODO_EVENT_TYPES = ['added', 'updated', 'completed', 'reopened', 'deleted', 'reminder', 'overdue']
+export const TODO_DATA_FIELDS = ['entry_id', 'title', 'when', 'priority', 'status', 'category', 'recurring_id']
+
+/**
+ * 校验+规范化「一条」规则对象(agent 产出整条 JSON 走这里,而非拼 flag)。缺 id 自动补、enabled 缺省 true。
+ * 校验不过即抛清晰错误(供 add --spec / --dry-run 用)。
+ */
+export function validateRuleSpec(input: string | object): Rule {
+  let obj: unknown = input
+  if (typeof input === 'string') {
+    try {
+      obj = JSON.parse(input)
+    } catch {
+      throw new Error('rule spec must be valid JSON')
+    }
+  }
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) throw new Error('rule spec must be a JSON object')
+  const o = obj as Partial<Rule>
+  const when = whenToString(o.when)
+  if (!when) throw new Error('rule needs "when" (e.g. "todo.completed" or "claude.commit")')
+  const actions = Array.isArray(o.do) ? o.do.map(normalizeAction).filter((x): x is Action => x !== null) : []
+  if (actions.length === 0) throw new Error('rule needs at least one action in "do": {exec:"…"} or {notify:{…}}')
+  if (o.where !== undefined && (typeof o.where !== 'object' || o.where === null || Array.isArray(o.where)))
+    throw new Error('"where" must be an object of field→matcher, e.g. {"title":"~^feat"}')
+  return {
+    id: typeof o.id === 'string' && o.id ? o.id : newRuleId(),
+    name: typeof o.name === 'string' ? o.name : undefined,
+    when,
+    where: o.where as Record<string, string> | undefined,
+    do: actions,
+    enabled: o.enabled !== false,
+    cooldown_sec: typeof o.cooldown_sec === 'number' ? o.cooldown_sec : undefined
+  }
+}
+
 // ── 字段解析:单段路径先查顶层再落 data(故 category/priority 等 data 字段可裸写);多段按路径走 ──
 const pad = (n: number): string => String(n).padStart(2, '0')
 const ymd = (d: Date): string => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
