@@ -5,6 +5,7 @@ import { cmdList } from './commands/list'
 import { cmdDue } from './commands/due'
 import { cmdWatch } from './commands/watch'
 import { cmdDaemon } from './commands/daemon'
+import { cmdRules } from './commands/rules'
 import { cmdImport } from './commands/import'
 import { cmdView } from './commands/view'
 import { cmdUpdate } from './commands/update'
@@ -25,7 +26,7 @@ import { maybeNotifyUpdate } from './lib/update-check'
 const VERSION: string = require('../package.json').version
 
 // 可重复的值 flag（收集成数组）。其余值 flag 取最后一次。
-const REPEATABLE = new Set(['remind', 'subtask', 'agent'])
+const REPEATABLE = new Set(['remind', 'subtask', 'agent', 'on'])
 // 合法的无值(布尔)flag。其余 flag 缺值 = 用法错(防 `--remind`(漏值)被静默当 true→丢弃)。
 const BOOLEAN_FLAGS = new Set([
   'json',
@@ -38,6 +39,7 @@ const BOOLEAN_FLAGS = new Set([
   'ansi',
   'link', // 无值 = 默认 jovida.ai;也可 --link <url>
   'dry-run',
+  'disabled',
   'clear-when',
   'clear-remind',
   'clear-category',
@@ -113,6 +115,9 @@ Usage:
                # stream todo changes in real time (push over SSE; not polling)
   jovida daemon start|stop|status|restart [--json]
                # background watcher: keeps the statusline cache live + fires desktop notifications
+  jovida rules list|add|rm|enable|disable|test
+               # "when X do Y" automations: run a command / fire a notification on todo events
+               # (the daemon runs them — see: jovida help rules)
   jovida import lark [--category <s>] [--dry-run] [--json]
                # one-way import of your incomplete Lark/Feishu tasks (idempotent, re-runnable)
   jovida view <entry_id|recurring_id> [--fresh] [--json]
@@ -266,6 +271,51 @@ full snapshot, so it schedules local timers and rings on its own. Reconnects aut
 a reconnect re-reconciles so nothing is missed. Logs to ~/.jovida/cli/daemon.log.
 
 Needs a backend with the SSE ingress (\`/jov/msghub/v1/sse\`). Requires \`jovida login\`.
+`,
+  rules: `jovida rules — "when X do Y" automations for your todos (todos-as-triggers)
+
+Usage:
+  jovida rules list [--json]
+  jovida rules add --on <event> [--on <event> ...] [filters] <action> [--cooldown <sec>] [--disabled]
+  jovida rules rm <id>
+  jovida rules enable <id> | disable <id>
+  jovida rules test [--event <kind>] [--title <s>] [--category <s>] [--priority <p>]
+
+A rule reacts to a todo event with an action. The **daemon** runs them (jovida daemon start) —
+'rules' commands just edit ~/.jovida/cli/rules.json (hand-editable too); changes are picked up
+by the running daemon within seconds.
+
+Events (--on, repeatable or comma-separated; '*' = any):
+  added | updated | completed | reopened | deleted   (changes synced from any device / the agent)
+  reminder | overdue                                  (local time moments the daemon rings on its own)
+
+Filters (all optional, AND-ed):
+  --title-contains <s>   case-insensitive substring on the todo title
+  --category <s>         exact category
+  --priority <p>         none | low | medium | high
+
+Actions (give at least one):
+  --exec <cmd>           run 'sh -c <cmd>'. The event JSON is piped to stdin, and these env vars are set:
+                         JOVIDA_EVENT, JOVIDA_TITLE, JOVIDA_ENTRY_ID, JOVIDA_RECURRING_ID,
+                         JOVIDA_WHEN, JOVIDA_PRIORITY, JOVIDA_CATEGORY, JOVIDA_STATUS
+                         (best-effort, 30s timeout; output goes to daemon.log)
+  --notify-title <s>     fire a Jovida-branded desktop notification. --notify-message / --subtitle too.
+                         All three support {title} {event} {category} {priority} {when} {status} placeholders.
+
+Other:
+  --name <s>             a label for the rule (shown in list / log)
+  --cooldown <sec>       minimum seconds between two fires of this rule (debounce)
+  --disabled             add it switched off (enable later)
+
+Examples:
+  # celebrate finishing any 健身 todo
+  jovida rules add --name 打卡 --on completed --category 健身 --notify-title "打卡✅" --notify-message "{title}"
+  # log every new todo the agent adds to a file
+  jovida rules add --on added --exec 'echo "$JOVIDA_TITLE" >> ~/todos.log'
+  # push overdue high-priority items somewhere, at most once a minute
+  jovida rules add --on overdue --priority high --exec 'notify-send "$JOVIDA_TITLE"' --cooldown 60
+  # see which rules a completion of "晨跑" would trigger, without running anything
+  jovida rules test --event completed --title 晨跑 --category 健身
 `,
   import: `jovida import — one-way import from an external source (currently: Lark/Feishu tasks)
 
@@ -506,6 +556,27 @@ async function main(): Promise<void> {
       break
     case 'daemon':
       await cmdDaemon(ctx, { action: positionals[0], json })
+      break
+    case 'rules':
+      cmdRules({
+        action: positionals[0],
+        positionals: positionals.slice(1),
+        name: str(flags.name),
+        on: arr(flags.on),
+        titleContains: str(flags['title-contains']),
+        category: str(flags.category),
+        priority: str(flags.priority),
+        exec: str(flags.exec),
+        notifyTitle: str(flags['notify-title']),
+        notifyMessage: str(flags['notify-message']),
+        subtitle: str(flags.subtitle),
+        cooldown: num(flags.cooldown),
+        disabled: flags.disabled === true,
+        event: str(flags.event),
+        title: str(flags.title),
+        entryId: str(flags['entry-id']),
+        json
+      })
       break
     case 'import':
       await cmdImport(ctx, {

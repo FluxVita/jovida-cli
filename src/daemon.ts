@@ -16,7 +16,9 @@ import { watchTodoSync } from './watch'
 import { computeDue, reminderFires } from './core/due'
 import { renderBrief } from './core/brief'
 import { diffSnapshots, type ChangeKind } from './core/diff'
+import { toListItem } from './core/convert'
 import { notify } from './notify'
+import { runRules, activeRuleCount } from './rules'
 
 const DIR = process.env['JOVIDA_HOME'] ?? join(homedir(), '.jovida', 'cli')
 const PID_FILE = join(DIR, 'daemon.pid')
@@ -84,6 +86,7 @@ interface DaemonStatus {
   storeVersion: number
   overdue: number
   upcoming: number
+  rules: number
   updatedAt: number
 }
 function writeStatus(s: DaemonStatus): void {
@@ -178,11 +181,22 @@ export async function runDaemon(ctx: Ctx): Promise<void> {
     storeVersion: 0,
     overdue: 0,
     upcoming: 0,
+    rules: 0,
     updatedAt: nowSec()
   }
   const flushStatus = (): void => {
     status.updatedAt = nowSec()
+    status.rules = activeRuleCount()
     writeStatus(status)
+  }
+
+  // 守护日志:断连/重连、规则触发都写这里(start 已把 stdout/stderr 重定向到 daemon.log)。
+  const logLine = (msg: string): void => {
+    try {
+      process.stderr.write(`[${new Date().toISOString()}] ${msg}\n`)
+    } catch {
+      /* 忽略 */
+    }
   }
 
   const refreshStatusline = (snap: StoredSnapshot): void => {
@@ -226,6 +240,9 @@ export async function runDaemon(ctx: Ctx): Promise<void> {
     fired.add(momentKey(m))
     if (m.kind === 'reminder') notify({ title: '🔔 Jovida 提醒', message: m.title })
     else notify({ title: '⏰ 待办到期', message: m.title })
+    // 时刻也过规则引擎(reminder/overdue 事件)。拿该待办的完整列表形态供 match/模板用。
+    const entry = prev?.entries.find((e) => e.entryId === m.entryId)
+    runRules({ kind: m.kind, todo: entry ? toListItem(entry) : { entry_id: m.entryId, title: m.title } }, logLine)
     if (prev) refreshStatusline(prev) // 该待办刚跨进逾期/提醒时刻,雷达那行变了
     scheduleNextMoment()
   }
@@ -264,7 +281,11 @@ export async function runDaemon(ctx: Ctx): Promise<void> {
       do {
         pending = false
         const next = (await loadSnapshot(ctx, { fresh: true })).snap
-        if (prev) notifyPushBatch(diffSnapshots(prev, next))
+        if (prev) {
+          const events = diffSnapshots(prev, next)
+          notifyPushBatch(events) // 内置通知(added/completed/deleted)
+          for (const ev of events) runRules({ kind: ev.event, todo: ev.todo }, logLine) // 用户规则(全部变更种类)
+        }
         prev = next
         status.lastSignalAt = nowSec()
         refreshStatusline(next) // 计数 + statusline 缓存
@@ -309,12 +330,7 @@ export async function runDaemon(ctx: Ctx): Promise<void> {
       log: (msg) => {
         status.connected = false
         flushStatus()
-        try {
-          // 断连/重连提示写日志(start 已把 stdout/stderr 重定向到 daemon.log)
-          process.stderr.write(`[${new Date().toISOString()}] ${msg}\n`)
-        } catch {
-          /* 忽略 */
-        }
+        logLine(msg)
       }
     })
   } finally {

@@ -20,7 +20,8 @@ function printStatus(json: boolean): void {
   }
   const conn = status.connected ? 'connected' : 'disconnected'
   const due = status.overdue || status.upcoming ? `${status.overdue} overdue · ${status.upcoming} upcoming` : 'nothing due'
-  console.log(`● running · pid ${status.pid} · ${conn} · store v=${status.storeVersion} · ${due}`)
+  const rules = status.rules ? ` · ${status.rules} rules` : ''
+  console.log(`● running · pid ${status.pid} · ${conn} · store v=${status.storeVersion} · ${due}${rules}`)
 }
 
 export async function cmdDaemon(ctx: Ctx, a: DaemonArgs): Promise<void> {
