@@ -6,6 +6,7 @@ import { cmdDue } from './commands/due'
 import { cmdWatch } from './commands/watch'
 import { cmdDaemon } from './commands/daemon'
 import { cmdRules } from './commands/rules'
+import { cmdEmit } from './commands/emit'
 import { cmdImport } from './commands/import'
 import { cmdView } from './commands/view'
 import { cmdUpdate } from './commands/update'
@@ -26,7 +27,7 @@ import { maybeNotifyUpdate } from './lib/update-check'
 const VERSION: string = require('../package.json').version
 
 // 可重复的值 flag（收集成数组）。其余值 flag 取最后一次。
-const REPEATABLE = new Set(['remind', 'subtask', 'agent', 'on'])
+const REPEATABLE = new Set(['remind', 'subtask', 'agent', 'where', 'exec'])
 // 合法的无值(布尔)flag。其余 flag 缺值 = 用法错(防 `--remind`(漏值)被静默当 true→丢弃)。
 const BOOLEAN_FLAGS = new Set([
   'json',
@@ -116,8 +117,11 @@ Usage:
   jovida daemon start|stop|status|restart [--json]
                # background watcher: keeps the statusline cache live + fires desktop notifications
   jovida rules list|add|rm|enable|disable|test
-               # "when X do Y" automations: run a command / fire a notification on todo events
-               # (the daemon runs them — see: jovida help rules)
+               # "when X do Y" automations over a unified event envelope (the daemon runs them)
+               # e.g. jovida rules add --when claude.commit --where title=~^feat --exec 'jovida create ...'
+  jovida emit <source> <type> [--title <s>] [--id <s>] [--data <json>]
+               # push a custom event into the engine — any hook/cron/script becomes a trigger source
+               # (see: jovida help rules)
   jovida import lark [--category <s>] [--dry-run] [--json]
                # one-way import of your incomplete Lark/Feishu tasks (idempotent, re-runnable)
   jovida view <entry_id|recurring_id> [--fresh] [--json]
@@ -272,50 +276,76 @@ a reconnect re-reconciles so nothing is missed. Logs to ~/.jovida/cli/daemon.log
 
 Needs a backend with the SSE ingress (\`/jov/msghub/v1/sse\`). Requires \`jovida login\`.
 `,
-  rules: `jovida rules — "when X do Y" automations for your todos (todos-as-triggers)
+  rules: `jovida rules — "when X do Y" automations over a unified event envelope
 
 Usage:
   jovida rules list [--json]
-  jovida rules add --on <event> [--on <event> ...] [filters] <action> [--cooldown <sec>] [--disabled]
+  jovida rules add --when <source.type> [--where <field=expr> ...] <action ...> [--cooldown <sec>] [--disabled]
   jovida rules rm <id>
   jovida rules enable <id> | disable <id>
-  jovida rules test [--event <kind>] [--title <s>] [--category <s>] [--priority <p>]
+  jovida rules test (--source <s> --type <s> [--title <s>] [--data <json>] | --envelope <json>)
 
-A rule reacts to a todo event with an action. The **daemon** runs them (jovida daemon start) —
-'rules' commands just edit ~/.jovida/cli/rules.json (hand-editable too); changes are picked up
-by the running daemon within seconds.
+The engine speaks one thing: an event **envelope** { source, type, title?, id?, at?, data? }.
+A rule matches an envelope by source.type (+ optional field filters) and runs actions. The **daemon**
+runs them (jovida daemon start); these commands just edit ~/.jovida/cli/rules.json (hand-editable too),
+which the running daemon picks up within seconds.
 
-Events (--on, repeatable or comma-separated; '*' = any):
-  added | updated | completed | reopened | deleted   (changes synced from any device / the agent)
-  reminder | overdue                                  (local time moments the daemon rings on its own)
+Event sources (the 'source' of an envelope):
+  todo        built in — the daemon emits todo.<change> and todo.<moment>:
+              todo.added | todo.updated | todo.completed | todo.reopened | todo.deleted
+              todo.reminder | todo.overdue   (local time moments)
+  <your own>  anything that runs 'jovida emit <source> <type> …' — a Claude Code hook, cron, a script.
+              (poll / long-lived stream sources are planned; today, push via 'jovida emit'.)
 
-Filters (all optional, AND-ed):
-  --title-contains <s>   case-insensitive substring on the todo title
-  --category <s>         exact category
-  --priority <p>         none | low | medium | high
+--when <source.type>     which events fire this rule. "todo.completed", "claude.commit",
+                         "weather.*" (any type of that source), or just "weather" (same as .*)
+--where <field=expr>     repeatable filter, AND-ed. field is an envelope path — bare keys resolve
+                         against top level then data (so 'category', 'priority' work for todo;
+                         'data.city' also works). expr: ~regex (case-insensitive) · =exact · else substring.
+                           --where title=~^feat   --where category==健身   --where cond=rain
 
-Actions (give at least one):
-  --exec <cmd>           run 'sh -c <cmd>'. The event JSON is piped to stdin, and these env vars are set:
-                         JOVIDA_EVENT, JOVIDA_TITLE, JOVIDA_ENTRY_ID, JOVIDA_RECURRING_ID,
-                         JOVIDA_WHEN, JOVIDA_PRIORITY, JOVIDA_CATEGORY, JOVIDA_STATUS
-                         (best-effort, 30s timeout; output goes to daemon.log)
-  --notify-title <s>     fire a Jovida-branded desktop notification. --notify-message / --subtitle too.
-                         All three support {title} {event} {category} {priority} {when} {status} placeholders.
+Actions (give at least one; multiple --exec = multiple actions, run in order):
+  --exec <cmd>           run 'sh -c <cmd>'. Data reaches it SAFELY via env vars + the envelope JSON on
+                         stdin — the command string is NOT interpolated (titles/messages may contain
+                         quotes or ';'). Env vars set: JOVIDA_SOURCE, JOVIDA_TYPE, JOVIDA_TITLE,
+                         JOVIDA_ID, JOVIDA_AT, JOVIDA_TODAY, JOVIDA_TOMORROW, JOVIDA_<KEY> for each
+                         data field, and JOVIDA_DATA (whole data as JSON). Use "$JOVIDA_TITLE", not {title}.
+                         (best-effort, 30s timeout; output → daemon.log)
+  --notify-title <s>     fire a Jovida-branded desktop notification (--notify-message / --subtitle too).
+                         These DO support {title} {source} {type} {data.x} {today} {tomorrow} placeholders
+                         (safe — notify never touches a shell).
 
 Other:
-  --name <s>             a label for the rule (shown in list / log)
-  --cooldown <sec>       minimum seconds between two fires of this rule (debounce)
-  --disabled             add it switched off (enable later)
+  --name <s>  a label · --cooldown <sec>  min seconds between fires (debounce) · --disabled  add switched off
 
 Examples:
-  # celebrate finishing any 健身 todo
-  jovida rules add --name 打卡 --on completed --category 健身 --notify-title "打卡✅" --notify-message "{title}"
-  # log every new todo the agent adds to a file
-  jovida rules add --on added --exec 'echo "$JOVIDA_TITLE" >> ~/todos.log'
-  # push overdue high-priority items somewhere, at most once a minute
-  jovida rules add --on overdue --priority high --exec 'notify-send "$JOVIDA_TITLE"' --cooldown 60
-  # see which rules a completion of "晨跑" would trigger, without running anything
-  jovida rules test --event completed --title 晨跑 --category 健身
+  # when a completed todo is in 健身, celebrate (notify uses {title} template)
+  jovida rules add --when todo.completed --where category==健身 --notify-title "打卡✅" --notify-message "{title}"
+  # when Claude Code commits a feature (via a hook that emits claude.commit), remind to open a PR
+  jovida rules add --when claude.commit --where title=~^feat --exec 'jovida create "推送并开 PR：$JOVIDA_TITLE" --priority high'
+  # dry-run: which rules would a claude.commit fire?
+  jovida rules test --source claude --type commit --title "feat(x): y"
+`,
+  emit: `jovida emit — push a custom event into the trigger engine (become a source)
+
+Usage:
+  jovida emit <source> <type> [--title <s>] [--id <s>] [--data <json>]
+
+Hands one event envelope { source, type, title?, id?, at?, data? } to the daemon, which matches it
+against your rules (see: jovida help rules) and runs the actions. This is how anything becomes a
+trigger source: a Claude Code hook, a cron job, a shell script — they all just call 'jovida emit'.
+
+Fire-and-forget: it writes the envelope to a spool (~/.jovida/cli/events/) and exits 0 even if the
+daemon isn't running — queued events are processed when the daemon next starts. 'at' is filled in
+automatically. --data is arbitrary JSON stored under the envelope's 'data' (matchable via --where data.x).
+
+Examples:
+  jovida emit claude commit --title "feat(rules): 待办即触发器"
+  jovida emit weather rain --title "杭州有雨" --data '{"city":"Hangzhou","cond":"Light rain"}'
+
+Wire it into Claude Code (~/.claude/settings.json) — emit claude.commit after every git commit:
+  "hooks": { "PostToolUse": [{ "matcher": "Bash", "hooks": [{ "type": "command",
+    "command": "jq -er 'select(.tool_input.command|test(\\"git commit\\")).tool_input.command' >/dev/null && jovida emit claude commit --title \\"$(git log -1 --format=%s)\\"" }]}] }
 `,
   import: `jovida import — one-way import from an external source (currently: Lark/Feishu tasks)
 
@@ -562,19 +592,29 @@ async function main(): Promise<void> {
         action: positionals[0],
         positionals: positionals.slice(1),
         name: str(flags.name),
-        on: arr(flags.on),
-        titleContains: str(flags['title-contains']),
-        category: str(flags.category),
-        priority: str(flags.priority),
-        exec: str(flags.exec),
+        when: str(flags.when),
+        where: arr(flags.where),
+        exec: arr(flags.exec),
         notifyTitle: str(flags['notify-title']),
         notifyMessage: str(flags['notify-message']),
         subtitle: str(flags.subtitle),
         cooldown: num(flags.cooldown),
         disabled: flags.disabled === true,
-        event: str(flags.event),
+        envelope: str(flags.envelope),
+        source: str(flags.source),
+        type: str(flags.type),
         title: str(flags.title),
-        entryId: str(flags['entry-id']),
+        data: str(flags.data),
+        json
+      })
+      break
+    case 'emit':
+      cmdEmit({
+        source: positionals[0],
+        type: positionals[1],
+        title: str(flags.title),
+        id: str(flags.id),
+        data: str(flags.data),
         json
       })
       break

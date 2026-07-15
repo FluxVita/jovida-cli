@@ -1,90 +1,100 @@
-// jovida rules — 待办即触发器的管理面(list/add/rm/enable/disable/test)。
+// jovida rules — 触发器的管理面(list/add/rm/enable/disable/test)。
 // 规则的「执行」在常驻守护里(嵌入式引擎,见 ../rules.ts);这里只增删查改 rules.json + 干跑预览。
 import {
   loadRules,
   saveRules,
   matchRule,
-  eventContext,
   renderTemplate,
+  parseWhen,
   newRuleId,
   RULES_FILE,
-  ALL_EVENT_KINDS,
   type Rule,
-  type RuleOn,
-  type RuleEvent,
-  type RuleEventKind,
-  type RuleMatch
+  type Action,
+  type Envelope,
+  type NotifySpec
 } from '../core/rules'
-import type { Priority } from '../core/types'
 
 export interface RulesArgs {
   action?: string // list | add | rm | enable | disable | test
-  positionals: string[] // e.g. rule id for rm/enable/disable
+  positionals: string[] // rule id(rm/enable/disable)
   name?: string
-  on?: string[] // 事件种类(可重复);add 用
-  titleContains?: string
-  category?: string
-  priority?: string
-  exec?: string
+  when?: string // 源.类型
+  where?: string[] // field=expr(可重复)
+  exec?: string[] // 动作命令(可重复→多个 exec 动作)
   notifyTitle?: string
   notifyMessage?: string
   subtitle?: string
   cooldown?: number
   disabled?: boolean
-  // test 用:构造一个合成事件
-  event?: string
+  // test 用:合成信封
+  envelope?: string // 整条信封 JSON(优先)
+  source?: string
+  type?: string
   title?: string
-  entryId?: string
+  data?: string // data JSON
   json?: boolean
 }
 
-const PRIORITIES = new Set<Priority>(['none', 'low', 'medium', 'high'])
-
-function parseOn(on: string[] | undefined): RuleOn[] {
-  const out: RuleOn[] = []
-  for (const item of on ?? []) {
-    for (const k of item.split(',').map((s) => s.trim()).filter(Boolean)) {
-      if (k === '*' || (ALL_EVENT_KINDS as string[]).includes(k)) out.push(k as RuleOn)
-      else throw new Error(`unknown event kind: ${k} (use ${ALL_EVENT_KINDS.join('|')} or *)`)
-    }
+function parseWhere(where: string[] | undefined): Record<string, string> | undefined {
+  if (!where || where.length === 0) return undefined
+  const out: Record<string, string> = {}
+  for (const item of where) {
+    const i = item.indexOf('=')
+    if (i <= 0) throw new Error(`--where must be field=expr (e.g. --where title=~^feat): ${item}`)
+    out[item.slice(0, i).trim()] = item.slice(i + 1)
   }
   return out
 }
 
-function buildMatch(a: RulesArgs): RuleMatch | undefined {
-  const m: RuleMatch = {}
-  if (a.titleContains) m.title_contains = a.titleContains
-  if (a.category) m.category = a.category
-  if (a.priority) {
-    if (!PRIORITIES.has(a.priority as Priority)) throw new Error(`invalid priority: ${a.priority} (none|low|medium|high)`)
-    m.priority = a.priority as Priority
+function buildActions(a: RulesArgs): Action[] {
+  const acts: Action[] = []
+  for (const cmd of a.exec ?? []) acts.push({ exec: cmd })
+  if (a.notifyTitle || a.notifyMessage || a.subtitle) {
+    const n: NotifySpec = {}
+    if (a.notifyTitle) n.title = a.notifyTitle
+    if (a.notifyMessage) n.message = a.notifyMessage
+    if (a.subtitle) n.subtitle = a.subtitle
+    acts.push({ notify: n })
   }
-  return Object.keys(m).length ? m : undefined
+  return acts
+}
+
+function actionSummary(act: Action): string {
+  if ('exec' in act) return `exec: ${act.exec}`
+  const n = act.notify
+  return `notify: ${n.title ?? '(default)'}${n.message ? ' — ' + n.message : ''}`
 }
 
 function ruleSummary(r: Rule): string {
-  const on = r.on.join(',')
-  const m = r.match
-  const filt = m
+  const where = r.where
     ? ' where ' +
-      [
-        m.title_contains ? `title~"${m.title_contains}"` : '',
-        m.category ? `category=${m.category}` : '',
-        m.priority ? `priority=${m.priority}` : ''
-      ]
-        .filter(Boolean)
+      Object.entries(r.where)
+        .map(([k, v]) => `${k}=${v}`)
         .join(' ')
     : ''
-  const act = [r.exec ? `exec: ${r.exec}` : '', r.notify ? 'notify' : ''].filter(Boolean).join(' + ')
   const cd = r.cooldown_sec ? ` (cooldown ${r.cooldown_sec}s)` : ''
   const flag = r.enabled ? '●' : '○'
-  return `${flag} ${r.id}${r.name ? '  ' + r.name : ''}\n    on ${on}${filt} → ${act}${cd}`
+  const acts = r.do.map((a) => '    → ' + actionSummary(a)).join('\n')
+  return `${flag} ${r.id}${r.name ? '  ' + r.name : ''}\n    when ${r.when}${where}${cd}\n${acts}`
 }
 
 function findRule(rules: Rule[], id: string): Rule {
   const r = rules.find((x) => x.id === id || x.id.endsWith(id))
   if (!r) throw new Error(`no rule matching id: ${id}`)
   return r
+}
+
+function buildTestEnvelope(a: RulesArgs): Envelope {
+  if (a.envelope) {
+    const env = JSON.parse(a.envelope) as Envelope
+    if (!env.source || !env.type) throw new Error('--envelope must have source and type')
+    return env
+  }
+  if (!a.source || !a.type)
+    throw new Error('test needs --source and --type (or a full --envelope <json>)')
+  let data: Record<string, unknown> | undefined
+  if (a.data) data = JSON.parse(a.data) as Record<string, unknown>
+  return { source: a.source, type: a.type, title: a.title, data }
 }
 
 export function cmdRules(a: RulesArgs): void {
@@ -99,7 +109,9 @@ export function cmdRules(a: RulesArgs): void {
         return
       }
       if (rules.length === 0) {
-        console.log(`no rules yet. add one:\n  jovida rules add --on completed --title-contains 跑步 --notify-title "打卡✅"\n(file: ${RULES_FILE})`)
+        console.log(
+          `no rules yet. add one:\n  jovida rules add --when todo.completed --where category==健身 --notify-title "打卡✅"\n(file: ${RULES_FILE})`
+        )
         return
       }
       for (const r of rules) console.log(ruleSummary(r))
@@ -107,20 +119,17 @@ export function cmdRules(a: RulesArgs): void {
     }
 
     case 'add': {
-      const on = parseOn(a.on)
-      if (on.length === 0) throw new Error('add needs at least one --on <event> (e.g. --on completed)')
-      if (!a.exec && !a.notifyTitle && !a.notifyMessage && !a.subtitle)
-        throw new Error('add needs an action: --exec <cmd> and/or --notify-title/--notify-message')
+      if (!a.when) throw new Error('add needs --when <source.type> (e.g. --when todo.completed, --when claude.commit)')
+      parseWhen(a.when) // 校验形状
+      const actions = buildActions(a)
+      if (actions.length === 0)
+        throw new Error('add needs an action: --exec <cmd> (repeatable) and/or --notify-title/--notify-message')
       const rule: Rule = {
         id: newRuleId(),
         name: a.name,
-        on,
-        match: buildMatch(a),
-        exec: a.exec,
-        notify:
-          a.notifyTitle || a.notifyMessage || a.subtitle
-            ? { title: a.notifyTitle, message: a.notifyMessage, subtitle: a.subtitle }
-            : undefined,
+        when: a.when,
+        where: parseWhere(a.where),
+        do: actions,
         enabled: a.disabled !== true,
         cooldown_sec: a.cooldown && a.cooldown > 0 ? a.cooldown : undefined
       }
@@ -128,7 +137,10 @@ export function cmdRules(a: RulesArgs): void {
       rules.push(rule)
       saveRules(rules)
       if (json) console.log(JSON.stringify({ added: rule }))
-      else console.log(`✓ added rule ${rule.id}\n${ruleSummary(rule)}\n(takes effect on the running daemon within seconds; start one with 'jovida daemon start')`)
+      else
+        console.log(
+          `✓ added rule ${rule.id}\n${ruleSummary(rule)}\n(the running daemon picks it up within seconds; start one with 'jovida daemon start')`
+        )
       return
     }
 
@@ -157,57 +169,48 @@ export function cmdRules(a: RulesArgs): void {
     }
 
     case 'test': {
-      // 干跑:用合成事件过一遍规则,打印命中项 + 渲染后的动作,不真执行。
-      const kind = (a.event ?? 'completed') as RuleEventKind
-      if (!(ALL_EVENT_KINDS as string[]).includes(kind))
-        throw new Error(`unknown --event: ${kind} (use ${ALL_EVENT_KINDS.join('|')})`)
-      const ev: RuleEvent = {
-        kind,
-        todo: {
-          entry_id: a.entryId ?? 'test_entry',
-          title: a.title ?? '(test)',
-          priority: a.priority ?? 'none',
-          category: a.category ?? '',
-          status: kind === 'completed' ? 'completed' : 'pending'
-        }
-      }
+      // 干跑:用合成信封过一遍规则,打印命中项 + 渲染后的动作,不真执行。
+      const env = buildTestEnvelope(a)
       const rules = loadRules()
-      const hits = rules.filter((r) => matchRule(ev, r))
+      const hits = rules.filter((r) => matchRule(env, r))
       if (json) {
-        const ctx = eventContext(ev)
         console.log(
           JSON.stringify({
-            event: ev,
+            envelope: env,
             matched: hits.map((r) => ({
               id: r.id,
               name: r.name,
-              exec: r.exec,
-              notify: r.notify
-                ? {
-                    title: r.notify.title ? renderTemplate(r.notify.title, ctx) : `Jovida · ${ctx.event}`,
-                    message: r.notify.message ? renderTemplate(r.notify.message, ctx) : ctx.title,
-                    subtitle: r.notify.subtitle ? renderTemplate(r.notify.subtitle, ctx) : undefined
-                  }
-                : undefined
+              do: r.do.map((act) =>
+                'exec' in act
+                  ? { exec: act.exec } // exec 不插值(靠 $JOVIDA_* 环境变量),原样回显
+                  : {
+                      notify: {
+                        title: act.notify.title ? renderTemplate(act.notify.title, env) : `Jovida · ${env.source}.${env.type}`,
+                        message: act.notify.message ? renderTemplate(act.notify.message, env) : env.title ?? '',
+                        subtitle: act.notify.subtitle ? renderTemplate(act.notify.subtitle, env) : undefined
+                      }
+                    }
+              )
             }))
           })
         )
         return
       }
-      const ctx = eventContext(ev)
-      console.log(`event: ${ev.kind}  title="${ctx.title}" category="${ctx.category}" priority=${ctx.priority}`)
+      console.log(`envelope: ${env.source}.${env.type}  title="${env.title ?? ''}"${env.data ? '  data=' + JSON.stringify(env.data) : ''}`)
       if (hits.length === 0) {
         console.log('→ no rules match')
         return
       }
       for (const r of hits) {
         console.log(`→ ${r.id}${r.name ? ' (' + r.name + ')' : ''} would fire:`)
-        if (r.notify) {
-          const title = r.notify.title ? renderTemplate(r.notify.title, ctx) : `Jovida · ${ctx.event}`
-          const message = r.notify.message ? renderTemplate(r.notify.message, ctx) : ctx.title
-          console.log(`    notify: "${title}" — "${message}"`)
+        for (const act of r.do) {
+          if ('exec' in act) console.log(`    exec: ${act.exec}`)
+          else {
+            const title = act.notify.title ? renderTemplate(act.notify.title, env) : `Jovida · ${env.source}.${env.type}`
+            const message = act.notify.message ? renderTemplate(act.notify.message, env) : env.title ?? ''
+            console.log(`    notify: "${title}" — "${message}"`)
+          }
         }
-        if (r.exec) console.log(`    exec: ${r.exec}`)
       }
       return
     }

@@ -7,7 +7,7 @@
 // 生命周期自托管:start(自我 detach 到后台+写 pid)/ stop / status / run(前台工作体)。
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { existsSync, mkdirSync, writeFileSync, readFileSync, rmSync, openSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync, readFileSync, rmSync, openSync, watch as fsWatch, type FSWatcher } from 'node:fs'
 import { spawn } from 'node:child_process'
 import type { Ctx } from './ctx'
 import type { StoredSnapshot } from './store'
@@ -17,6 +17,7 @@ import { computeDue, reminderFires } from './core/due'
 import { renderBrief } from './core/brief'
 import { diffSnapshots, type ChangeKind } from './core/diff'
 import { toListItem } from './core/convert'
+import { drainEvents, ensureEventsDir, EVENTS_DIR } from './core/rules'
 import { notify } from './notify'
 import { runRules, activeRuleCount } from './rules'
 
@@ -172,6 +173,8 @@ export async function runDaemon(ctx: Ctx): Promise<void> {
   const fired = new Set<string>() // 已触发/已略过的时刻键
   let momentTimer: NodeJS.Timeout | null = null
   let rescanTimer: NodeJS.Timeout | null = null
+  let spoolWatcher: FSWatcher | null = null
+  let draining = false
 
   const status: DaemonStatus = {
     pid: process.pid,
@@ -240,9 +243,12 @@ export async function runDaemon(ctx: Ctx): Promise<void> {
     fired.add(momentKey(m))
     if (m.kind === 'reminder') notify({ title: '🔔 Jovida 提醒', message: m.title })
     else notify({ title: '⏰ 待办到期', message: m.title })
-    // 时刻也过规则引擎(reminder/overdue 事件)。拿该待办的完整列表形态供 match/模板用。
+    // 时刻也过规则引擎(todo.reminder / todo.overdue 信封)。拿该待办完整列表形态塞 data 供 where/模板用。
     const entry = prev?.entries.find((e) => e.entryId === m.entryId)
-    runRules({ kind: m.kind, todo: entry ? toListItem(entry) : { entry_id: m.entryId, title: m.title } }, logLine)
+    runRules(
+      { source: 'todo', type: m.kind, id: m.entryId, title: m.title, at: nowSec(), data: entry ? toListItem(entry) : { entry_id: m.entryId, title: m.title } },
+      logLine
+    )
     if (prev) refreshStatusline(prev) // 该待办刚跨进逾期/提醒时刻,雷达那行变了
     scheduleNextMoment()
   }
@@ -284,7 +290,12 @@ export async function runDaemon(ctx: Ctx): Promise<void> {
         if (prev) {
           const events = diffSnapshots(prev, next)
           notifyPushBatch(events) // 内置通知(added/completed/deleted)
-          for (const ev of events) runRules({ kind: ev.event, todo: ev.todo }, logLine) // 用户规则(全部变更种类)
+          // 用户规则:每个变更合成 todo 源信封(全部变更种类)
+          for (const ev of events)
+            runRules(
+              { source: 'todo', type: ev.event, id: String(ev.todo.entry_id ?? ev.todo.recurring_id ?? ''), title: String(ev.todo.title ?? ''), at: nowSec(), data: ev.todo },
+              logLine
+            )
         }
         prev = next
         status.lastSignalAt = nowSec()
@@ -298,10 +309,24 @@ export async function runDaemon(ctx: Ctx): Promise<void> {
     }
   }
 
+  // 取走 spool 里的推送事件(jovida emit 写的),逐条过规则引擎。守护不在时事件排队,起来即处理。
+  const drainSpool = (): void => {
+    if (draining) return
+    draining = true
+    try {
+      for (const env of drainEvents()) runRules(env, logLine)
+    } catch (e) {
+      logLine(`drainSpool failed: ${(e as Error).message}`)
+    } finally {
+      draining = false
+    }
+  }
+
   const shutdown = (): void => {
     controller.abort()
     if (momentTimer) clearTimeout(momentTimer)
     if (rescanTimer) clearInterval(rescanTimer)
+    if (spoolWatcher) spoolWatcher.close()
     removePid()
   }
   const onSignal = (): void => {
@@ -311,11 +336,21 @@ export async function runDaemon(ctx: Ctx): Promise<void> {
   process.on('SIGINT', onSignal)
   process.on('SIGTERM', onSignal)
 
-  // 周期重扫:把「刚进入 48h 视野」的提醒/到期时刻纳入排程(纯本地,不触网)。
+  // 周期重扫:把「刚进入 48h 视野」的提醒/到期时刻纳入排程 + 兜底扫一遍 spool(纯本地,不触网)。
   rescanTimer = setInterval(() => {
     if (prev) scheduleNextMoment()
+    drainSpool()
   }, RESCAN_MS)
   if (rescanTimer.unref) rescanTimer.unref()
+
+  // 推送事件 spool:起手先处理排队的,再 fs.watch 目录,新 emit 一落盘就触发。
+  ensureEventsDir()
+  drainSpool()
+  try {
+    spoolWatcher = fsWatch(EVENTS_DIR, () => drainSpool())
+  } catch (e) {
+    logLine(`spool watch unavailable (${(e as Error).message}); falling back to periodic drain`)
+  }
 
   flushStatus()
   try {

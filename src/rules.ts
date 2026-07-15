@@ -1,23 +1,24 @@
-// 规则引擎（有状态）——嵌入守护：每个变更事件 / 本地时刻都过一遍规则，命中就执行动作。
-// 全程 best-effort：任何单条规则/动作失败绝不影响守护主循环。动作两种（MVP）：
-//   exec   —— sh -c 跑用户命令，事件 JSON 走 stdin + JOVIDA_* 环境变量，带超时；
-//   notify —— 复用 notify.ts 的品牌化桌面通知，title/message/subtitle 支持 {占位} 模板。
+// 规则引擎（有状态）——嵌入守护:每个信封(内置 todo 变更/时刻,或 emit 推送来的)都过一遍规则,
+// 命中就依次执行 do 里的动作。全程 best-effort:任何单条规则/动作失败绝不影响守护主循环。
+// 动作两种(MVP):exec(sh -c,信封 JSON 走 stdin + JOVIDA_* 环境变量,30s 超时)、notify(品牌化桌面通知,
+// title/message/subtitle 支持 {占位} 模板)。
 import { statSync } from 'node:fs'
 import { spawn } from 'node:child_process'
 import {
   RULES_FILE,
   loadRules,
   matchRule,
-  eventContext,
   renderTemplate,
+  envToEnvVars,
   type Rule,
-  type RuleEvent
+  type Envelope,
+  type NotifySpec
 } from './core/rules'
 import { notify } from './notify'
 
-const EXEC_TIMEOUT_MS = 30_000 // 单条 exec 动作最长跑 30s，超时杀掉（防卡死守护级联）
+const EXEC_TIMEOUT_MS = 30_000 // 单条 exec 动作最长 30s,超时杀掉(防卡死级联)
 
-// ---- rules.json mtime 缓存：守护里高频事件不必每次读盘,文件变了才重载 ----
+// ── rules.json mtime 缓存:高频事件不必每次读盘,文件变了才重载 ──
 let cached: Rule[] = []
 let cachedMtimeMs = -1
 function getRules(): Rule[] {
@@ -28,25 +29,26 @@ function getRules(): Rule[] {
       cachedMtimeMs = mtime
     }
   } catch {
-    // 文件不存在/读不到 → 视为空表(并让下次文件出现时能重载)
     cached = []
     cachedMtimeMs = -1
   }
   return cached
 }
 
-// ---- 每规则冷却:上次触发的秒时间戳 ----
+// ── 每规则冷却 ──
 const lastFired = new Map<string, number>()
 const nowSec = (): number => Math.floor(Date.now() / 1000)
 
-/** exec 动作:sh -c 跑,事件 JSON 喂 stdin,JOVIDA_* 注入环境;超时杀掉;输出记日志。 */
-function runExec(rule: Rule, ev: RuleEvent, log: (m: string) => void): void {
-  const ctx = eventContext(ev)
-  const env: NodeJS.ProcessEnv = { ...process.env }
-  for (const [k, v] of Object.entries(ctx)) env[`JOVIDA_${k.toUpperCase()}`] = v
+/**
+ * exec 动作:sh -c 跑命令,信封 JSON 喂 stdin,JOVIDA_* 注入环境;超时杀掉;输出记日志。
+ * 刻意**不**把 {占位} 插进命令串——待办标题/提交信息等可含引号或 `;`,插值即 shell 注入。
+ * 数据一律走环境变量($JOVIDA_TITLE 等)+ stdin(整条信封 JSON)。{占位} 模板只给 notify(不碰 shell)。
+ */
+function runExec(rule: Rule, cmd: string, env: Envelope, log: (m: string) => void): void {
+  const childEnv: NodeJS.ProcessEnv = { ...process.env, ...envToEnvVars(env) }
   let child
   try {
-    child = spawn('sh', ['-c', rule.exec as string], { env, stdio: ['pipe', 'pipe', 'pipe'] })
+    child = spawn('sh', ['-c', cmd], { env: childEnv, stdio: ['pipe', 'pipe', 'pipe'] })
   } catch (e) {
     log(`rule ${rule.id} exec spawn failed: ${(e as Error).message}`)
     return
@@ -74,50 +76,50 @@ function runExec(rule: Rule, ev: RuleEvent, log: (m: string) => void): void {
     log(`rule ${rule.id} exec done (exit ${code ?? '?'})${tail ? ': ' + tail : ''}`)
   })
   try {
-    child.stdin?.end(JSON.stringify({ event: ev.kind, ...ev.todo }) + '\n')
+    child.stdin?.end(JSON.stringify(env) + '\n')
   } catch {
     /* stdin 关了也无妨 */
   }
 }
 
-/** notify 动作:模板渲染后弹品牌化桌面通知(缺省 title=事件、message=待办标题)。 */
-function runNotify(rule: Rule, ev: RuleEvent): void {
-  const ctx = eventContext(ev)
-  const n = rule.notify as NonNullable<Rule['notify']>
-  const title = n.title ? renderTemplate(n.title, ctx) : `Jovida · ${ctx.event}`
-  const message = n.message ? renderTemplate(n.message, ctx) : ctx.title
-  const subtitle = n.subtitle ? renderTemplate(n.subtitle, ctx) : undefined
+/** notify 动作:模板渲染后弹品牌化桌面通知(缺省 title="源 · 类型"、message=标题)。 */
+function runNotify(spec: NotifySpec, env: Envelope): void {
+  const title = spec.title ? renderTemplate(spec.title, env) : `Jovida · ${env.source}.${env.type}`
+  const message = spec.message ? renderTemplate(spec.message, env) : env.title ?? ''
+  const subtitle = spec.subtitle ? renderTemplate(spec.subtitle, env) : undefined
   notify({ title, message, ...(subtitle ? { subtitle } : {}) })
 }
 
-/** 执行一条命中的规则(两种动作都配则都跑)。best-effort,吞一切异常。 */
-function fireRule(rule: Rule, ev: RuleEvent, log: (m: string) => void): void {
-  try {
-    if (rule.notify) runNotify(rule, ev)
-    if (rule.exec) runExec(rule, ev, log)
-  } catch (e) {
-    log(`rule ${rule.id} fire failed: ${(e as Error).message}`)
+/** 执行一条命中规则的所有动作。best-effort,吞一切异常。 */
+function fireRule(rule: Rule, env: Envelope, log: (m: string) => void): void {
+  for (const a of rule.do) {
+    try {
+      if ('exec' in a) runExec(rule, a.exec, env, log)
+      else runNotify(a.notify, env)
+    } catch (e) {
+      log(`rule ${rule.id} action failed: ${(e as Error).message}`)
+    }
   }
 }
 
 /**
- * 守护对每个事件调用:载入(缓存)规则,逐条匹配 + 冷却把关,命中即触发。
+ * 守护对每个信封调用:载入(缓存)规则,逐条 when/where 匹配 + 冷却把关,命中即触发。
  * 纯 best-effort——绝不抛(整段包 try/catch),不阻塞主循环。
  */
-export function runRules(ev: RuleEvent, log: (m: string) => void): void {
+export function runRules(env: Envelope, log: (m: string) => void): void {
   try {
     const rules = getRules()
     if (rules.length === 0) return
     const now = nowSec()
     for (const rule of rules) {
-      if (!matchRule(ev, rule)) continue
+      if (!matchRule(env, rule)) continue
       if (rule.cooldown_sec && rule.cooldown_sec > 0) {
         const last = lastFired.get(rule.id) ?? 0
         if (now - last < rule.cooldown_sec) continue
       }
       lastFired.set(rule.id, now)
-      log(`rule ${rule.id}${rule.name ? ' (' + rule.name + ')' : ''} matched ${ev.kind}: ${String(ev.todo.title ?? '')}`)
-      fireRule(rule, ev, log)
+      log(`rule ${rule.id}${rule.name ? ' (' + rule.name + ')' : ''} matched ${env.source}.${env.type}: ${env.title ?? ''}`)
+      fireRule(rule, env, log)
     }
   } catch (e) {
     log(`runRules failed: ${(e as Error).message}`)
