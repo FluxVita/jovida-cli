@@ -1,6 +1,7 @@
 import { toFullTodo, toSeriesTodo, repeatToOutput } from '../core/convert'
 import { occurrenceToEntry, parseOccurrenceId, seriesOccursOn, ymdFromSec } from '../core/recurrence'
 import type { Ctx } from '../ctx'
+import { loadSnapshot } from '../snapshot'
 import { NotFoundError } from './shared'
 
 const WEEKDAY_NAME = ['', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
@@ -15,10 +16,9 @@ function fmtRepeat(r: Record<string, unknown>): string {
   return parts.join(' ')
 }
 
-export async function cmdView(ctx: Ctx, a: { id: string; json?: boolean }): Promise<void> {
+export async function cmdView(ctx: Ctx, a: { id: string; fresh?: boolean; json?: boolean }): Promise<void> {
   if (!a.id) throw new Error('entry_id required:  jovida view <entry_id | recurring_id>')
-  await ctx.session.ensureSession()
-  const snap = await ctx.sync.pull()
+  const { snap } = await loadSnapshot(ctx, { fresh: a.fresh }) // 版本门控:本地新鲜直读
 
   // 普通待办(含已材料化的循环发生)。带 recurringId 的条目附带其重复规则。
   const entry = snap.entries.find((x) => x.entryId === a.id)

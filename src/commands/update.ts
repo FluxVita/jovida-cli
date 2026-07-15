@@ -9,6 +9,7 @@ import {
 import type { Priority, Reminder, RepeatUnit, Subtask, TodoEntry, TodoRecurring } from '../core/types'
 import { occurrenceToEntry, parseOccurrenceId, seriesOccursOn, ymdFromSec } from '../core/recurrence'
 import type { Ctx } from '../ctx'
+import { loadForWrite } from '../snapshot'
 import { nowSec, NotFoundError } from './shared'
 
 const PRIORITIES: Priority[] = ['none', 'low', 'medium', 'high']
@@ -111,8 +112,7 @@ export async function cmdUpdate(ctx: Ctx, a: UpdateArgs): Promise<void> {
   if (a.subtask !== undefined) changes.subtasks = a.subtask.map((s) => ({ title: s }))
   if (a.hint !== undefined) changes.hint = a.hint
 
-  await ctx.session.ensureSession()
-  const snap = await ctx.sync.pull()
+  const snap = await loadForWrite(ctx) // 读那半走本地;写仍落服务端
 
   // ── 普通待办 ──
   const entry = snap.entries.find((x) => x.entryId === a.id)

@@ -2,9 +2,8 @@
 // 快照走本地 TTL 缓存(默认 60s,写路径成功即失效);--brief 单行输出、任何错误静默退 0(状态栏不容脏字)。
 import { computeDue, type DueItem } from '../core/due'
 import { toListItem, secToIso, secToBelongDate } from '../core/convert'
-import { readSnapshotCache, writeSnapshotCache } from '../state'
+import { loadSnapshot } from '../snapshot'
 import type { Ctx } from '../ctx'
-import type { Snapshot } from '../sync'
 
 const DAY = 86400
 const DEFAULT_TTL = 60
@@ -88,29 +87,11 @@ function itemJson(it: DueItem): Record<string, unknown> {
   }
 }
 
-async function loadSnapshot(ctx: Ctx, ttlSecs: number, fresh: boolean): Promise<{ snap: Snapshot; ageSecs: number }> {
-  const cached = fresh ? null : readSnapshotCache<Snapshot>()
-  if (cached && cached.ageSecs <= ttlSecs) return { snap: cached.payload, ageSecs: cached.ageSecs }
-  await ctx.session.ensureSession()
-  if (cached) {
-    // 缓存过期:先花一个 get_todo_version(极小请求)探测,版本没变就原地续期——
-    // 绝大多数轮次数据没动,把「全量快照」降成「一个版本号」。
-    try {
-      if ((await ctx.sync.getServerVersion()) === cached.payload.serverVersion) {
-        writeSnapshotCache(cached.payload) // 重盖时间戳
-        return { snap: cached.payload, ageSecs: 0 }
-      }
-    } catch {
-      /* 探测失败(网络抖动等)→ 落回全量拉取,该抛的错由它抛 */
-    }
-  }
-  return { snap: await ctx.sync.pull(), ageSecs: 0 } // pull 内部会刷新缓存
-}
-
 async function run(ctx: Ctx, a: DueArgs): Promise<void> {
   const withinSecs = parseWithin(a.within)
+  // due 走更短的默认 TTL(60s):statusline/hook 高频轮询要更接近实时;读命令默认 300s。
   const ttl = a.ttl !== undefined && a.ttl >= 0 ? a.ttl : DEFAULT_TTL
-  const { snap, ageSecs } = await loadSnapshot(ctx, ttl, a.fresh === true)
+  const { snap, ageSecs } = await loadSnapshot(ctx, { ttlSecs: ttl, fresh: a.fresh === true })
   const nowSec = Math.floor(Date.now() / 1000)
   const r = computeDue({
     entries: snap.entries,

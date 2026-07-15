@@ -16,7 +16,8 @@ import { cmdSkill } from './commands/skill'
 import { NotFoundError } from './commands/shared'
 import { NotSignedInError, LoginError } from './session'
 import { ApiError } from './api'
-import { clearCredentials, invalidateSnapshotCache } from './state'
+import { clearCredentials } from './state'
+import { clearStore } from './store'
 import { maybeNotifyUpdate } from './lib/update-check'
 
 const VERSION: string = require('../package.json').version
@@ -103,12 +104,12 @@ Usage:
                           (--repeat needs --when as the first date)
   jovida list  [--scope today|upcoming|recent|range|all] [--status pending|completed|all]
                [--query <text>] [--category <s>] [--priority <p>]
-               [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--limit N] [--full] [--json]
+               [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--limit N] [--full] [--fresh] [--json]
   jovida due   [--within 2h|90m|1d] [--brief] [--fresh] [--json]
                # overdue + due-soon radar (statusline / agent-hook friendly; cached)
   jovida import lark [--category <s>] [--dry-run] [--json]
                # one-way import of your incomplete Lark/Feishu tasks (idempotent, re-runnable)
-  jovida view <entry_id|recurring_id> [--json]
+  jovida view <entry_id|recurring_id> [--fresh] [--json]
   jovida update <entry_id|recurring_id> [--title ...] [--when ...] [--remind ...] [...]
                           (recurring_id: also --repeat/--every/--weekdays/--until to change the repeat rule)
   jovida complete <entry_id> [<entry_id> ...] [--json]
@@ -168,6 +169,8 @@ Options:
   --to <YYYY-MM-DD>    range end
   --limit <N>    max items (default 20)
   --full         JSON: include all fields (description, subtasks, reminders) — one round-trip instead of list + view
+  --fresh        bypass the local snapshot store and pull now (reads are served from a local
+                 copy, revalidated by a cheap version probe when older than 300s)
   --json
 
 Output carries "total" and "has_more" so you can tell when results were truncated by --limit.
@@ -242,10 +245,11 @@ Options:
   view: `jovida view — full details of one todo, a repeating todo, or one occurrence
 
 Usage:
-  jovida view <entry_id | recurring_id | occurrence_id> [--json]
+  jovida view <entry_id | recurring_id | occurrence_id> [--fresh] [--json]
 
 Given a repeating todo's recurring_id, shows its repeat rule.
 Given an occurrence id (from list, "recurring:…"), shows that occurrence with its rule.
+Served from the local snapshot store (revalidated by a version probe); --fresh forces a pull.
 `,
   update: `jovida update — change fields of a todo, a repeating todo, or one occurrence (only the given fields change)
 
@@ -392,7 +396,7 @@ async function main(): Promise<void> {
       break
     case 'logout':
       clearCredentials()
-      invalidateSnapshotCache() // 退出后不留上一账号的待办快照
+      clearStore() // 退出后不留上一账号的待办快照
       console.log(json ? JSON.stringify({ status: 'signed_out' }) : '✓ signed out')
       break
     case 'whoami':
@@ -431,6 +435,7 @@ async function main(): Promise<void> {
         category: str(flags.category),
         priority: str(flags.priority),
         full: flags.full === true,
+        fresh: flags.fresh === true,
         json
       })
       break
@@ -454,7 +459,7 @@ async function main(): Promise<void> {
       })
       break
     case 'view':
-      await cmdView(ctx, { id: positionals[0], json })
+      await cmdView(ctx, { id: positionals[0], fresh: flags.fresh === true, json })
       break
     case 'update':
       await cmdUpdate(ctx, {

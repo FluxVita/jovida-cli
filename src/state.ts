@@ -1,5 +1,6 @@
 // 本地状态:~/.jovida/cli/(`~/.jovida` 留作品牌命名空间,CLI 占 cli 子目录;可经 JOVIDA_HOME 覆盖)。
-// 无待办库——storeless。credentials.json(token,0600)+ state.json(deviceId / lastServerVersion)。
+// credentials.json(token,0600)+ state.json(deviceId / 更新检查节流)。
+// 待办快照本地库单独在 store.ts(store.json),不在这里。
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
@@ -21,7 +22,6 @@ export interface TokenRecord {
 interface LocalState {
   deviceId?: string
   didStable?: boolean
-  lastServerVersion?: number
   updateCheckAt?: number // 上次查 npm 最新版的 Unix 秒(节流)
   updateLatest?: string // 缓存的最新版本号
 }
@@ -89,15 +89,6 @@ export function getDeviceId(): string {
   return id
 }
 
-export function getLastServerVersion(): number {
-  return loadState().lastServerVersion ?? 0
-}
-export function setLastServerVersion(v: number): void {
-  const s = loadState()
-  s.lastServerVersion = v
-  saveState(s)
-}
-
 export function getUpdateCheck(): { at: number; latest: string } {
   const s = loadState()
   return { at: s.updateCheckAt ?? 0, latest: s.updateLatest ?? '' }
@@ -107,41 +98,6 @@ export function setUpdateCheck(at: number, latest: string): void {
   s.updateCheckAt = at
   s.updateLatest = latest
   saveState(s)
-}
-
-// ---- 快照缓存(`jovida due` 的高频轮询用;statusline/hook 每回合都调,不能每次全量 pull) ----
-// 尽力而为:读写失败一律静默当无缓存。写路径(put/delete)成功后由 sync 失效,防状态栏显示已完成的旧项。
-const SNAP_CACHE = join(DIR, 'snapshot-cache.json')
-
-interface SnapCacheFile {
-  at: number // 写入 Unix 秒
-  payload: unknown
-}
-
-/** 读缓存(带存活秒数,新鲜度判定交给调用方——过期缓存还可经版本探测续期,不在这里丢弃)。 */
-export function readSnapshotCache<T>(): { payload: T; ageSecs: number } | null {
-  const c = readJson<SnapCacheFile>(SNAP_CACHE)
-  if (!c || typeof c.at !== 'number') return null
-  const age = Math.floor(Date.now() / 1000) - c.at
-  if (age < 0) return null
-  return { payload: c.payload as T, ageSecs: age }
-}
-
-export function writeSnapshotCache(payload: unknown): void {
-  try {
-    ensureDir()
-    writeFileSync(SNAP_CACHE, JSON.stringify({ at: Math.floor(Date.now() / 1000), payload }), { mode: 0o600 })
-  } catch {
-    /* 缓存尽力而为,写不进不影响命令本身 */
-  }
-}
-
-export function invalidateSnapshotCache(): void {
-  try {
-    rmSync(SNAP_CACHE)
-  } catch {
-    /* 不存在即忽略 */
-  }
 }
 
 /** 凭证:仅一枚 Sign 态 vita token(设备授权流换得;过渡期可由 --token 直粘)。 */

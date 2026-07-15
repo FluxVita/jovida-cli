@@ -2,6 +2,7 @@ import { toListItem, toFullTodo, belongDateToSec } from '../core/convert'
 import { expandRecurring } from '../core/recurrence'
 import type { Priority, TodoEntry, TodoRecurring } from '../core/types'
 import type { Ctx } from '../ctx'
+import { loadSnapshot } from '../snapshot'
 
 const PRIORITIES: Priority[] = ['none', 'low', 'medium', 'high']
 
@@ -42,6 +43,7 @@ export interface ListArgs {
   category?: string // 精确匹配分组标签
   priority?: string // none|low|medium|high
   full?: boolean // JSON 输出带全字段(description/subtasks/remind_at…),省去 list→view 第二次 pull
+  fresh?: boolean // 跳过本地库,强制全量拉取
   json?: boolean
 }
 
@@ -55,8 +57,7 @@ export async function cmdList(ctx: Ctx, a: ListArgs): Promise<void> {
   const status = a.status ?? (hasFilter ? 'all' : 'pending')
   const limit = a.limit ?? 20
 
-  await ctx.session.ensureSession()
-  const snap = await ctx.sync.pull()
+  const { snap } = await loadSnapshot(ctx, { fresh: a.fresh }) // 版本门控:本地新鲜直读,变了才拉
 
   // 重复待办本地展开:把窗口内的「发生」合成虚拟项混入(后端 sync 不展开发生)。
   const todayStart = startOfTodaySec()

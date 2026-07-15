@@ -1,5 +1,6 @@
 import type { TodoEntry } from '../core/types'
 import type { Ctx } from '../ctx'
+import { loadForWrite } from '../snapshot'
 import { nowSec, NotFoundError } from './shared'
 
 /**
@@ -10,8 +11,7 @@ export async function cmdReopen(ctx: Ctx, a: { ids: string[]; json?: boolean }):
   if (!a.ids || a.ids.length === 0) {
     throw new Error('entry_id(s) required:  jovida reopen <entry_id> [<entry_id> ...]')
   }
-  await ctx.session.ensureSession()
-  const snap = await ctx.sync.pull()
+  const snap = await loadForWrite(ctx) // 读那半走本地;写仍落服务端
   const t = nowSec()
   const reopened: TodoEntry[] = []
   const missing: string[] = []
