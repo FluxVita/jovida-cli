@@ -4,6 +4,7 @@ import { cmdCreate } from './commands/create'
 import { cmdList } from './commands/list'
 import { cmdDue } from './commands/due'
 import { cmdWatch } from './commands/watch'
+import { cmdDaemon } from './commands/daemon'
 import { cmdImport } from './commands/import'
 import { cmdView } from './commands/view'
 import { cmdUpdate } from './commands/update'
@@ -110,6 +111,8 @@ Usage:
                # overdue + due-soon radar (statusline / agent-hook friendly; cached)
   jovida watch [--json]
                # stream todo changes in real time (push over SSE; not polling)
+  jovida daemon start|stop|status|restart [--json]
+               # background watcher: keeps the statusline cache live + fires desktop notifications
   jovida import lark [--category <s>] [--dry-run] [--json]
                # one-way import of your incomplete Lark/Feishu tasks (idempotent, re-runnable)
   jovida view <entry_id|recurring_id> [--fresh] [--json]
@@ -238,6 +241,31 @@ Runs until Ctrl-C. Reconnects automatically (the connection is read-only; it nev
 the network). Pipe it to an agent or a script:  jovida watch --json | your-tool
 
 Env: JOVIDA_API_URL (same backend as other commands). Requires \`jovida login\`.
+`,
+  daemon: `jovida daemon — background watcher: live statusline cache + desktop notifications
+
+Usage:
+  jovida daemon start      # detach a background watcher (subscribes to the push channel)
+  jovida daemon stop       # stop it
+  jovida daemon status     # is it running? connected? how many due? [--json]
+  jovida daemon restart
+  jovida daemon run        # run in the foreground (what 'start' detaches; use for debugging)
+
+One long-lived process turns the CLI from "pull" into "watch". On every change it:
+  1. refreshes the local snapshot and writes the rendered due-radar line (ansi + plain
+     variants) to statusline.json — your statusline just cats it: zero node spawn, always
+     current. Wire it up (falls back to \`jovida due --brief\` when the daemon is off):
+        cache=~/.jovida/cli/statusline.json
+        if [ -f "$cache" ]; then jq -r '.ansi' "$cache"; else jovida due --brief --ansi --link; fi
+  2. fires a native macOS notification (osascript, no dependency) for changes worth a nudge:
+     a new todo (from the agent or another device), a reminder coming due, a todo crossing
+     into overdue, or a completion/deletion from another device.
+
+Reminders and overdue-crossings aren't server pushes (no data changes) — the daemon holds the
+full snapshot, so it schedules local timers and rings on its own. Reconnects automatically;
+a reconnect re-reconciles so nothing is missed. Logs to ~/.jovida/cli/daemon.log.
+
+Needs a backend with the SSE ingress (\`/jov/msghub/v1/sse\`). Requires \`jovida login\`.
 `,
   import: `jovida import — one-way import from an external source (currently: Lark/Feishu tasks)
 
@@ -475,6 +503,9 @@ async function main(): Promise<void> {
       break
     case 'watch':
       await cmdWatch(ctx, { json })
+      break
+    case 'daemon':
+      await cmdDaemon(ctx, { action: positionals[0], json })
       break
     case 'import':
       await cmdImport(ctx, {

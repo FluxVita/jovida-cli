@@ -20,7 +20,7 @@ export interface DueReport {
 }
 
 // 各次提醒的触发时刻。enabled=false(App 端关掉的提醒)不参与;canAlarm 只关乎渠道,不影响时刻。
-function reminderFires(e: TodoEntry, anchor: number): number[] {
+export function reminderFires(e: TodoEntry, anchor: number): number[] {
   if (!e.reminder || e.reminder.enabled === false) return []
   return e.reminder.offsetSecs.map((o) => anchor - o)
 }

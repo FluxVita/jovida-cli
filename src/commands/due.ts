@@ -1,13 +1,12 @@
 // jovida due — 到期雷达:逾期 + 窗口内临期(含提醒触发)。为 statusline / agent hook 高频轮询而生:
 // 快照走本地 TTL 缓存(默认 60s,写路径成功即失效);--brief 单行输出、任何错误静默退 0(状态栏不容脏字)。
 import { computeDue, type DueItem } from '../core/due'
+import { renderBrief, fmtClock, fmtNext, DAY } from '../core/brief'
 import { toListItem, secToIso, secToBelongDate } from '../core/convert'
 import { loadSnapshot } from '../snapshot'
 import type { Ctx } from '../ctx'
 
-const DAY = 86400
 const DEFAULT_TTL = 60
-const BRIEF_TITLE_COLS = 24 // 标题截断上限,按**显示列宽**(CJK 每字 2 列),不是字符数
 const LIST_CAP = 20 // json/human 列表上限(计数仍为全量)
 
 export interface DueArgs {
@@ -35,49 +34,7 @@ function startOfTodaySec(): number {
   return Math.floor(d.getTime() / 1000)
 }
 
-// ---- 展示 ----
-function sameLocalDay(sec: number, refSec: number): boolean {
-  const a = new Date(sec * 1000)
-  const b = new Date(refSec * 1000)
-  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
-}
-function fmtClock(sec: number, nowSec: number): string {
-  const d = new Date(sec * 1000)
-  const hm = `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`
-  return sameLocalDay(sec, nowSec) ? hm : `${d.getMonth() + 1}/${d.getDate()} ${hm}`
-}
-/** 到期/提醒时刻的短格式。纯日期待办(锚=归属日结束)显示成「哪天内」而非午夜时刻。 */
-function fmtNext(it: DueItem, nowSec: number): string {
-  if (it.nextIsReminder || it.entry.dueAt > 0) return fmtClock(it.nextAt, nowSec)
-  const belongSec = it.anchorAt - DAY // 锚 = belong+1天
-  if (sameLocalDay(belongSec, nowSec)) return 'today'
-  const d = new Date(belongSec * 1000)
-  return `${d.getMonth() + 1}/${d.getDate()}`
-}
-// 按终端显示宽度截断:CJK/全角(≥U+2E80)占 2 列,否则 1 列。按字符数截会让中文标题铺满状态栏。
-function truncateCols(s: string, cols: number): string {
-  let w = 0
-  let out = ''
-  for (const ch of s) {
-    const cw = (ch.codePointAt(0) ?? 0) >= 0x2e80 ? 2 : 1
-    if (w + cw > cols - 1) return `${out}…`
-    out += ch
-    w += cw
-  }
-  return s
-}
-
-// --ansi 时给 statusline 分层上色;纯 --brief(hook 注入上下文)保持素文本。
-const paint = (ansi: boolean | undefined, code: string, s: string): string =>
-  ansi ? `\u001b[${code}m${s}\u001b[0m` : s
-
-// --link:OSC 8 超链接(终端标准;iTerm2/WezTerm/Kitty/Ghostty 等支持 Cmd+点击,
-// Claude Code statusline 实测透传)。不支持的终端按未知序列忽略,只是不可点。
-const DEFAULT_LINK = 'https://jovida.ai'
-const OSC = '\u001b]8;;'
-const ST = '\u001b\\'
-const hyperlink = (url: string, s: string): string => `${OSC}${url}${ST}${s}${OSC}${ST}`
-
+// ---- 展示 ----(单行渲染与时间短格式在 ../core/brief,与守护共用一套)
 function itemJson(it: DueItem): Record<string, unknown> {
   return {
     ...toListItem(it.entry),
@@ -102,22 +59,9 @@ async function run(ctx: Ctx, a: DueArgs): Promise<void> {
   })
 
   if (a.brief) {
-    // 单行:`🐰 N overdue · HH:MM 标题 +M`;无事输出空(statusline/hook 均以空为「不显示/不注入」)。
-    // 配色策略(--ansi):红=overdue(唯一的警报色),黄=时间(扫一眼抓的重点),dim=标题/计数(弱化)。
-    const parts: string[] = []
-    if (r.overdue.length) parts.push(paint(a.ansi, '31', `${r.overdue.length} overdue`))
-    if (r.upcoming.length) {
-      const first = r.upcoming[0]
-      const more = r.upcoming.length - 1
-      const bell = first.nextIsReminder ? '🔔 ' : ''
-      const title = truncateCols(first.entry.title, BRIEF_TITLE_COLS) + (more > 0 ? ` +${more}` : '')
-      parts.push(`${paint(a.ansi, '33', fmtNext(first, nowSec))} ${bell}${paint(a.ansi, '2', title)}`)
-    }
-    if (parts.length) {
-      let line = `🐰 ${parts.join(' · ')}` // 🐰 = Jovida 的兔子,statusline 里的品牌记号
-      if (a.link) line = hyperlink(typeof a.link === 'string' ? a.link : DEFAULT_LINK, line)
-      console.log(line)
-    }
+    // 单行(statusline/hook):无事输出空。渲染在 core/brief.renderBrief,与守护写进缓存的那行同源。
+    const line = renderBrief(r, nowSec, { ansi: a.ansi, link: a.link })
+    if (line) console.log(line)
     return
   }
 
