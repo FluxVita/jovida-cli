@@ -8,6 +8,7 @@ import { cmdDaemon } from './commands/daemon'
 import { cmdRules } from './commands/rules'
 import { cmdPoll } from './commands/poll'
 import { cmdStream } from './commands/stream'
+import { cmdPack } from './commands/pack'
 import { cmdEmit } from './commands/emit'
 import { cmdImport } from './commands/import'
 import { cmdView } from './commands/view'
@@ -29,7 +30,7 @@ import { maybeNotifyUpdate } from './lib/update-check'
 const VERSION: string = require('../package.json').version
 
 // 可重复的值 flag（收集成数组）。其余值 flag 取最后一次。
-const REPEATABLE = new Set(['remind', 'subtask', 'agent', 'where', 'exec'])
+const REPEATABLE = new Set(['remind', 'subtask', 'agent', 'where', 'exec', 'rule', 'poll', 'stream'])
 // 合法的无值(布尔)flag。其余 flag 缺值 = 用法错(防 `--remind`(漏值)被静默当 true→丢弃)。
 const BOOLEAN_FLAGS = new Set([
   'json',
@@ -130,6 +131,9 @@ Usage:
   jovida stream list|add|rm|enable|disable|test
                # a streaming source: a long-lived command that prints one event envelope per line
                # e.g. jovida stream add --source app --type error --cmd 'tail -F app.log | ...'
+  jovida pack export|import|save|install|list|show|rm
+               # bundle a whole automation (sources + rules) into one shareable file — a "shortcut"
+               # e.g. jovida pack save --name rain-umbrella --all  ·  jovida pack install rain-umbrella
   jovida import lark [--category <s>] [--dry-run] [--json]
                # one-way import of your incomplete Lark/Feishu tasks (idempotent, re-runnable)
   jovida view <entry_id|recurring_id> [--fresh] [--json]
@@ -433,6 +437,40 @@ Examples:
   # preview what a command emits before saving it:
   jovida stream test --source app --type error --cmd 'printf "{\\"title\\":\\"boom\\"}\\n"'
 `,
+  pack: `jovida pack — bundle a whole automation into one shareable file (your "shortcuts library")
+
+Usage:
+  jovida pack export --name <n> (--all | --rule <id> … --poll <id> … --stream <id> …) [--desc <s>] [--out <file>]
+  jovida pack import <file|->  [--dry-run] [--disabled]        # install a bundle (from a file or stdin)
+  jovida pack save --name <n> (--all | --rule/--poll/--stream <id> …) [--desc <s>]   # export into the local library
+  jovida pack install <name>   [--dry-run] [--disabled]        # install a bundle from the local library
+  jovida pack list                                             # list saved packs
+  jovida pack show <name>                                      # print a saved pack
+  jovida pack rm <name>                                        # delete a saved pack (installed defs stay)
+
+A **bundle** packages a coherent automation — its trigger source(s) and the rule(s) that react — as one JSON
+object { name, description?, rules[], polls[], streams[] }. It's the unit you share: export/save it, hand the
+file to someone (or another machine), and they 'import'/'install' it to get the same automation live.
+
+Selecting what to bundle (export/save): --all takes every current rule/poll/stream, or name specific ones with
+repeatable --rule/--poll/--stream <id> (id suffixes are accepted, as in 'rm').
+
+Installing (import/install): every definition gets a FRESH id, so a bundle is a template — installing it twice
+makes two copies, and it never clobbers your existing automations. Rules bind to sources by 'source.type' (a
+string), not by id, so re-id'ing is safe and keeps the rule→source wiring intact. --dry-run validates and shows
+the counts without writing; --disabled installs everything switched off so you can review before enabling.
+
+Examples:
+  # capture the "rain → umbrella" automation (its poll + the rule) and save it to your library
+  jovida pack save --name rain-umbrella --desc "下雨提醒带伞" --poll pol_… --rule rul_…
+  # share it: write the bundle to a file to send to a teammate
+  jovida pack export --name rain-umbrella --poll pol_… --rule rul_… --out rain-umbrella.json
+  # on the other machine: review first, then install
+  jovida pack import rain-umbrella.json --dry-run
+  jovida pack import rain-umbrella.json --disabled     # install off, then 'jovida rules/poll enable <id>'
+  # bundle your entire setup as a backup / starter kit
+  jovida pack save --name my-kit --all
+`,
   import: `jovida import — one-way import from an external source (currently: Lark/Feishu tasks)
 
 Usage:
@@ -733,6 +771,22 @@ async function main(): Promise<void> {
         source: str(flags.source),
         type: str(flags.type),
         restart: num(flags.restart),
+        disabled: flags.disabled === true,
+        json
+      })
+      break
+    case 'pack':
+      cmdPack({
+        action: positionals[0],
+        positionals: positionals.slice(1),
+        name: str(flags.name),
+        desc: str(flags.desc),
+        rule: arr(flags.rule),
+        poll: arr(flags.poll),
+        stream: arr(flags.stream),
+        all: flags.all === true,
+        out: str(flags.out),
+        dryRun: flags['dry-run'] === true,
         disabled: flags.disabled === true,
         json
       })

@@ -76,6 +76,8 @@ The engine speaks one **event envelope** `{ source, type, title?, id?, at?, data
 
 poll and stream are authored like rules (`--spec '<json>' --dry-run`, then `list`/`rm`/`enable`/`disable`); you then react to what they emit with an ordinary rule (`--when <source>.<type>`).
 
+A coherent automation — a trigger source plus the rule that reacts — can be bundled into one shareable file with **`jovida pack`** (`export`/`save` to make one, `import`/`install` to apply it; `--dry-run`/`--disabled` to review first). Installing re-ids every definition (a bundle is a template; rules bind to sources by `source.type`, not id, so it stays wired), so it never clobbers existing automations. This is how a user carries a setup between machines or shares a "shortcut"; ground on the exact flags with `jovida pack --help`.
+
 To author reliably, don't guess the schema — **ground on it first**:
 
 1. `jovida rules spec --json` — the envelope, the built-in `todo` vocabulary, the rule schema, matchers (`~regex` / `=exact` / substring), the exec env vars, and the safety rule (exec is **not** string-interpolated — pass data via `$JOVIDA_*` env vars + the envelope JSON on stdin; `{…}` templates are for `notify` only).
