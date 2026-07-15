@@ -39,6 +39,18 @@ export class ApiClient {
     return this.fetchJson<T>(path, 'GET')
   }
 
+  /**
+   * 打开一条**原始**响应流(不 .json()),用于 SSE(text/event-stream)。带 Vita-* 会话头,
+   * 交由调用方读 res.body。不设超时(长连)——由传入的 AbortSignal 控制生命周期。
+   */
+  async openStream(path: string, signal?: AbortSignal): Promise<Response> {
+    return fetch(`${this.cfg.baseUrl}${path}`, {
+      method: 'GET',
+      headers: { ...this.headers(), Accept: 'text/event-stream' },
+      signal
+    })
+  }
+
   private headers(): Record<string, string> {
     const utcOffsetSec = -new Date().getTimezoneOffset() * 60
     const h: Record<string, string> = {

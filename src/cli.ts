@@ -3,6 +3,7 @@ import { makeCtx } from './ctx'
 import { cmdCreate } from './commands/create'
 import { cmdList } from './commands/list'
 import { cmdDue } from './commands/due'
+import { cmdWatch } from './commands/watch'
 import { cmdImport } from './commands/import'
 import { cmdView } from './commands/view'
 import { cmdUpdate } from './commands/update'
@@ -107,6 +108,8 @@ Usage:
                [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--limit N] [--full] [--fresh] [--json]
   jovida due   [--within 2h|90m|1d] [--brief] [--fresh] [--json]
                # overdue + due-soon radar (statusline / agent-hook friendly; cached)
+  jovida watch [--json]
+               # stream todo changes in real time (push over SSE; not polling)
   jovida import lark [--category <s>] [--dry-run] [--json]
                # one-way import of your incomplete Lark/Feishu tasks (idempotent, re-runnable)
   jovida view <entry_id|recurring_id> [--fresh] [--json]
@@ -215,6 +218,26 @@ Wire it into Claude Code (or any TUI agent):
   hook        — UserPromptSubmit hook running \`jovida due --brief\`: when something is
                 due its one-liner is injected as context, so the agent reminds you in-chat
   Set JOVIDA_TIMEOUT_MS (e.g. 5000) in those commands so a bad network can't stall the TUI.
+`,
+  watch: `jovida watch — stream todo changes in real time (push, not polling)
+
+Usage:
+  jovida watch [--json]
+
+Subscribes to a live push channel over SSE (the general msghub ingress) and, whenever your
+todos change on the server (from any device or the agent), pulls the new snapshot and prints
+what changed. This is notify-then-pull: the push is a tiny signal; the diff is computed locally
+against the last snapshot, so no change is ever missed (a reconnect re-reconciles).
+
+Output:
+  --json / non-TTY   one JSON object per line (JSONL): {event, entry_id|recurring_id, title, ...}
+                     event ∈ added | updated | completed | reopened | deleted
+  TTY                a human-readable line per change
+
+Runs until Ctrl-C. Reconnects automatically (the connection is read-only; it never blocks on
+the network). Pipe it to an agent or a script:  jovida watch --json | your-tool
+
+Env: JOVIDA_API_URL (same backend as other commands). Requires \`jovida login\`.
 `,
   import: `jovida import — one-way import from an external source (currently: Lark/Feishu tasks)
 
@@ -449,6 +472,9 @@ async function main(): Promise<void> {
         fresh: flags.fresh === true,
         json
       })
+      break
+    case 'watch':
+      await cmdWatch(ctx, { json })
       break
     case 'import':
       await cmdImport(ctx, {
