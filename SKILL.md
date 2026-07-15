@@ -68,7 +68,13 @@ Map the user's intent to a sequence; read before any change.
 
 Beyond capturing todos, the user can ask for **standing automations**: "when I finish a 健身 todo, celebrate", "when I commit a feature, remind me to open a PR". You can author these — the CLI has a small trigger engine (a background daemon runs the rules).
 
-The engine speaks one **event envelope** `{ source, type, title?, id?, at?, data? }`. A **rule** matches an envelope by `when` (`<source>.<type>`) + optional `where` field filters, and runs `do` actions (`exec` a shell command, or `notify`). Events reach the engine three ways: built-in source `todo` fires on `todo.added/updated/completed/reopened/deleted` and `todo.reminder/overdue`; a **push** source is anything that runs `jovida emit <source> <type> …` (a git hook, cron, a script); a **poll** source is `jovida poll add …`, which runs a check command on an interval and emits `<source>.<type>` on its false→true edge (for conditions nothing pushes — weather, CI status, a file appearing; ground on it with `jovida poll spec`, author like rules with `--spec`/`--dry-run`, then react with an ordinary rule `--when <source>.<type>`).
+The engine speaks one **event envelope** `{ source, type, title?, id?, at?, data? }`. A **rule** matches an envelope by `when` (`<source>.<type>`) + optional `where` field filters, and runs `do` actions (`exec` a shell command, or `notify`). Events reach the engine four ways — all feed the same rules:
+- **`todo`** (built-in): fires on `todo.added/updated/completed/reopened/deleted` and `todo.reminder/overdue`.
+- **push**: anything that runs `jovida emit <source> <type> …` — a git hook, cron, a script (one event per call).
+- **poll** (`jovida poll add …`, ground on `jovida poll spec`): runs a check command on an interval, emits `<source>.<type>` on its false→true edge — for conditions nothing pushes (weather, CI status, a file appearing).
+- **stream** (`jovida stream add …`, ground on `jovida stream spec`): supervises a long-lived command that prints one envelope JSON per line (tail a log, subscribe a feed) — the streaming analog of emit.
+
+poll and stream are authored like rules (`--spec '<json>' --dry-run`, then `list`/`rm`/`enable`/`disable`); you then react to what they emit with an ordinary rule (`--when <source>.<type>`).
 
 To author reliably, don't guess the schema — **ground on it first**:
 

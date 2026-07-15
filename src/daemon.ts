@@ -21,6 +21,7 @@ import { drainEvents, ensureEventsDir, EVENTS_DIR } from './core/rules'
 import { notify } from './notify'
 import { runRules, activeRuleCount } from './rules'
 import { startPolling, activePollCount } from './poll'
+import { startStreaming, activeStreamCount } from './stream'
 
 const DIR = process.env['JOVIDA_HOME'] ?? join(homedir(), '.jovida', 'cli')
 const PID_FILE = join(DIR, 'daemon.pid')
@@ -90,6 +91,7 @@ interface DaemonStatus {
   upcoming: number
   rules: number
   polls: number
+  streams: number
   updatedAt: number
 }
 function writeStatus(s: DaemonStatus): void {
@@ -178,6 +180,7 @@ export async function runDaemon(ctx: Ctx): Promise<void> {
   let spoolWatcher: FSWatcher | null = null
   let draining = false
   let stopPolling: (() => void) | null = null
+  let stopStreaming: (() => void) | null = null
 
   const status: DaemonStatus = {
     pid: process.pid,
@@ -189,12 +192,14 @@ export async function runDaemon(ctx: Ctx): Promise<void> {
     upcoming: 0,
     rules: 0,
     polls: 0,
+    streams: 0,
     updatedAt: nowSec()
   }
   const flushStatus = (): void => {
     status.updatedAt = nowSec()
     status.rules = activeRuleCount()
     status.polls = activePollCount()
+    status.streams = activeStreamCount()
     writeStatus(status)
   }
 
@@ -333,6 +338,7 @@ export async function runDaemon(ctx: Ctx): Promise<void> {
     if (rescanTimer) clearInterval(rescanTimer)
     if (spoolWatcher) spoolWatcher.close()
     if (stopPolling) stopPolling()
+    if (stopStreaming) stopStreaming()
     removePid()
   }
   const onSignal = (): void => {
@@ -360,6 +366,8 @@ export async function runDaemon(ctx: Ctx): Promise<void> {
 
   // poll 源:定时跑 check,上升沿(false→true)合成信封走同一条规则引擎(与 todo/emit 同轨)。
   stopPolling = startPolling((env) => runRules(env, logLine), logLine)
+  // stream 源:长驻命令逐行吐信封,监督重启,同样走规则引擎。
+  stopStreaming = startStreaming((env) => runRules(env, logLine), logLine)
 
   flushStatus()
   try {

@@ -7,6 +7,7 @@ import { cmdWatch } from './commands/watch'
 import { cmdDaemon } from './commands/daemon'
 import { cmdRules } from './commands/rules'
 import { cmdPoll } from './commands/poll'
+import { cmdStream } from './commands/stream'
 import { cmdEmit } from './commands/emit'
 import { cmdImport } from './commands/import'
 import { cmdView } from './commands/view'
@@ -126,6 +127,9 @@ Usage:
   jovida poll list|add|rm|enable|disable|test
                # a polling source: run a check on an interval, emit an event on its false→true edge
                # e.g. jovida poll add --source weather --type rain --check '...' --interval 30m
+  jovida stream list|add|rm|enable|disable|test
+               # a streaming source: a long-lived command that prints one event envelope per line
+               # e.g. jovida stream add --source app --type error --cmd 'tail -F app.log | ...'
   jovida import lark [--category <s>] [--dry-run] [--json]
                # one-way import of your incomplete Lark/Feishu tasks (idempotent, re-runnable)
   jovida view <entry_id|recurring_id> [--fresh] [--json]
@@ -304,10 +308,11 @@ Event sources (the 'source' of an envelope):
   todo        built in — the daemon emits todo.<change> and todo.<moment>:
               todo.added | todo.updated | todo.completed | todo.reopened | todo.deleted
               todo.reminder | todo.overdue   (local time moments)
-  <your own>  push:  anything that runs 'jovida emit <source> <type> …' — a Claude Code hook, cron, a script.
-              poll:  'jovida poll add …' runs a check on an interval and emits on its false→true edge
-                     (weather/CI/file conditions; see: jovida help poll).
-              (long-lived stream sources are planned.)
+  <your own>  push:    anything that runs 'jovida emit <source> <type> …' — a Claude Code hook, cron, a script.
+              poll:    'jovida poll add …' runs a check on an interval and emits on its false→true edge
+                       (weather/CI/file conditions; see: jovida help poll).
+              stream:  'jovida stream add …' supervises a long-lived command that prints one envelope
+                       per line (tail a log, subscribe a feed; see: jovida help stream).
 
 --when <source.type>     which events fire this rule. "todo.completed", "claude.commit",
                          "weather.*" (any type of that source), or just "weather" (same as .*)
@@ -395,6 +400,38 @@ More examples:
   jovida rules add --when ci.broken --exec 'jovida create "修复 CI：$JOVIDA_TITLE" --priority high'
   # dry-run a check before saving it
   jovida poll test --source weather --type rain --check 'curl -sf "https://wttr.in/?format=%C" | grep -qi rain'
+`,
+  stream: `jovida stream — a streaming source: a long-lived command that prints one event envelope per line
+
+Usage:
+  jovida stream list [--json]
+  jovida stream add --cmd '<long-lived command>' [--source <s>] [--type <s>] [--name <s>] [--restart <sec>] [--disabled]
+  jovida stream add --spec '<stream-json>' [--dry-run]        # apply a full stream object (agent-friendly)
+  jovida stream rm <id>
+  jovida stream enable <id> | disable <id>
+  jovida stream test (<id> | --cmd '<cmd>' [--source <s>] [--type <s>] | --spec <json>)   # run ≤3s, show parsed envelopes
+  jovida stream spec [--json]                                 # print the stream-source protocol (for agents)
+
+The fourth way to feed the trigger engine (alongside built-in 'todo', 'jovida emit', and 'jovida poll').
+A stream is the streaming analog of emit: instead of one event, a program that keeps producing them. The
+**daemon** spawns it, supervises it (restart-on-exit with backoff), and routes each line; you react with a rule.
+
+  --cmd '<cmd>'      a long-lived 'sh -c' command. Each stdout line must be one envelope JSON object:
+                     { source?, type?, title?, id?, at?, data? }. Unparseable lines are skipped.
+  --source/--type    defaults stamped onto lines that omit them — so a generator that only prints its
+                     payload (e.g. {"title":"…","data":{…}}) still works when you set these.
+  --restart <sec>    restart backoff base after the command exits (default 3s; doubles on repeated fast
+                     exits, capped at 60s; a run of ≥10s resets it).
+
+Examples:
+  # tail an app log, emit app.error for every ERROR line
+  jovida stream add --name errors --source app --type error \\
+    --cmd 'tail -F /var/log/app.log | grep --line-buffered ERROR | while read l; do jq -nc --arg t "$l" "{title:\\$t}"; done'
+  jovida rules add --when app.error --exec 'jovida create "查错：$JOVIDA_TITLE" --priority high'
+  # a generator that prints full envelopes needs no defaults:
+  jovida stream add --cmd 'my-event-source --jsonl'    # each line: {"source":"x","type":"y","title":"z"}
+  # preview what a command emits before saving it:
+  jovida stream test --source app --type error --cmd 'printf "{\\"title\\":\\"boom\\"}\\n"'
 `,
   import: `jovida import — one-way import from an external source (currently: Lark/Feishu tasks)
 
@@ -681,6 +718,21 @@ async function main(): Promise<void> {
         check: str(flags.check),
         interval: str(flags.interval),
         title: str(flags.title),
+        disabled: flags.disabled === true,
+        json
+      })
+      break
+    case 'stream':
+      await cmdStream({
+        action: positionals[0],
+        positionals: positionals.slice(1),
+        spec: str(flags.spec),
+        dryRun: flags['dry-run'] === true,
+        name: str(flags.name),
+        cmd: str(flags.cmd),
+        source: str(flags.source),
+        type: str(flags.type),
+        restart: num(flags.restart),
         disabled: flags.disabled === true,
         json
       })

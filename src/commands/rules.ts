@@ -169,7 +169,8 @@ export function cmdRules(a: RulesArgs): void {
         sources: {
           todo: { note: 'built-in; the daemon emits these', types: TODO_EVENT_TYPES, dataFields: TODO_DATA_FIELDS },
           push: { note: "any `jovida emit <source> <type> [--title] [--id] [--data <json>]` — a hook/cron/script becomes a source" },
-          poll: { note: "`jovida poll add …` runs a check on an interval and emits <source>.<type> on its false→true edge (weather/CI/file conditions); see 'jovida poll spec'" }
+          poll: { note: "`jovida poll add …` runs a check on an interval and emits <source>.<type> on its false→true edge (weather/CI/file conditions); see 'jovida poll spec'" },
+          stream: { note: "`jovida stream add …` supervises a long-lived command that prints one envelope JSON per line; see 'jovida stream spec'" }
         },
         rule: {
           when: '"<source>.<type>" | "<source>.*" | "<source>"',
