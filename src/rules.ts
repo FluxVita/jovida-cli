@@ -18,6 +18,8 @@ import {
   type NotifySpec
 } from './core/rules'
 import { notify } from './notify'
+import { buildTaskFromDispatch, writeTask } from './core/task'
+import type { DispatchSpec } from './core/rules'
 
 // 本 CLI 自身的入口(dist/cli.js,与 dist/rules.js 同级)。create/complete 动作即跑它,复用登录/建待办/缓存失效全套。
 const CLI_PATH = join(__dirname, 'cli.js')
@@ -128,6 +130,17 @@ function runCli(rule: Rule, argv: string[], log: (m: string) => void, attempt = 
   })
 }
 
+/** dispatch 动作:据信封构造一个任务写进队列(queued),交给常驻 worker 串行去跑。best-effort。 */
+function runDispatch(rule: Rule, spec: DispatchSpec, env: Envelope, log: (m: string) => void): void {
+  try {
+    const task = buildTaskFromDispatch(spec, env, rule.id, nowSec())
+    writeTask(task)
+    log(`rule ${rule.id} dispatch → task ${task.id} queued: ${task.prompt.slice(0, 60)}`)
+  } catch (e) {
+    log(`rule ${rule.id} dispatch failed: ${(e as Error).message}`)
+  }
+}
+
 /** notify 动作:模板渲染后弹品牌化桌面通知(缺省 title="源 · 类型"、message=标题)。 */
 function runNotify(spec: NotifySpec, env: Envelope): void {
   const title = spec.title ? renderTemplate(spec.title, env) : `Jovida · ${env.source}.${env.type}`
@@ -144,6 +157,7 @@ function fireRule(rule: Rule, env: Envelope, log: (m: string) => void): void {
       else if ('notify' in a) runNotify(a.notify, env)
       else if ('create' in a) runCli(rule, buildCreateArgv(a.create, env), log)
       else if ('complete' in a) runCli(rule, buildCompleteArgv(a.complete, env), log)
+      else if ('dispatch' in a) runDispatch(rule, a.dispatch, env, log)
     } catch (e) {
       log(`rule ${rule.id} action failed: ${(e as Error).message}`)
     }

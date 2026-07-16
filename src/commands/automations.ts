@@ -20,6 +20,7 @@ function actionLabel(act: Action): string {
   if ('exec' in act) return `exec ${act.exec}`
   if ('create' in act) return `create "${act.create.title}"`
   if ('complete' in act) return `complete ${act.complete.id}`
+  if ('dispatch' in act) return `dispatch "${act.dispatch.prompt.split('\n')[0].slice(0, 40)}"`
   return `notify ${act.notify.title ?? '(default)'}`
 }
 function ruleLine(r: Rule): string {

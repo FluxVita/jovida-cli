@@ -42,7 +42,20 @@ export interface CreateSpec {
 export interface CompleteSpec {
   id: string
 }
-export type Action = { exec: string } | { notify: NotifySpec } | { create: CreateSpec } | { complete: CompleteSpec }
+// dispatch:把一个「任务」派给本地常驻 agent worker 去真做(#8)。字段模板渲染后写进任务队列文件(非 shell,安全)。
+// worker 跑配置的 agent 命令(prompt 走环境变量+stdin);完成后回吐 task.done/failed 信封,可再喂规则(闭环)。
+export interface DispatchSpec {
+  prompt: string // 交给 agent 的指令(模板)
+  cwd?: string // 工作目录(模板;缺省用 worker 配置)
+  todo_id?: string // 关联待办 id(模板;完成后可据此让规则 complete)
+  agent?: string // 覆盖 worker 的 agent 命令(模板)
+}
+export type Action =
+  | { exec: string }
+  | { notify: NotifySpec }
+  | { create: CreateSpec }
+  | { complete: CompleteSpec }
+  | { dispatch: DispatchSpec }
 
 // ── 规则:绑定 ──
 export interface Rule {
@@ -88,11 +101,12 @@ function whenToString(when: unknown): string {
 
 // ── 读写 rules.json（容错:坏结构/坏项一律跳过,绝不抛,避免拖垮守护）──
 function normalizeAction(a: unknown): Action | null {
-  const act = a as { exec?: unknown; notify?: unknown; create?: unknown; complete?: unknown }
+  const act = a as { exec?: unknown; notify?: unknown; create?: unknown; complete?: unknown; dispatch?: unknown }
   if (act && typeof act.exec === 'string') return { exec: act.exec }
   if (act && act.notify && typeof act.notify === 'object') return { notify: act.notify as NotifySpec }
   if (act && act.create && typeof act.create === 'object' && typeof (act.create as CreateSpec).title === 'string') return { create: act.create as CreateSpec }
   if (act && act.complete && typeof act.complete === 'object' && typeof (act.complete as CompleteSpec).id === 'string') return { complete: act.complete as CompleteSpec }
+  if (act && act.dispatch && typeof act.dispatch === 'object' && typeof (act.dispatch as DispatchSpec).prompt === 'string') return { dispatch: act.dispatch as DispatchSpec }
   return null
 }
 export function parseRules(text: string): Rule[] {

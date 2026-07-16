@@ -76,6 +76,8 @@ The engine speaks one **event envelope** `{ source, type, title?, id?, at?, data
 
 poll and stream are authored like rules (`--spec '<json>' --dry-run`, then `list`/`rm`/`enable`/`disable`); you then react to what they emit with an ordinary rule (`--when <source>.<type>`).
 
+Beyond running commands, a rule can **`dispatch`** a task to a local **agent worker** (`jovida worker`) — a resident process that runs a configured agent CLI (claude/codex/…) to *actually do* the task, one at a time, then emits `task.done`/`task.failed` back into the engine (so another rule can complete the linked todo). This is how "when a todo lands in category X, have an agent do it" is realized. It only runs when the user has started the worker and configured an agent command (`jovida worker config`); the prompt reaches the agent safely via `$JOVIDA_TASK_PROMPT`, never shell-interpolated. Inspect the queue with `jovida task list`.
+
 A coherent automation — a trigger source plus the rule that reacts — can be bundled into one shareable file with **`jovida pack`** (`export`/`save` to make one, `import`/`install` to apply it; `--dry-run`/`--disabled` to review first). Installing re-ids every definition (a bundle is a template; rules bind to sources by `source.type`, not id, so it stays wired), so it never clobbers existing automations. This is how a user carries a setup between machines or shares a "shortcut"; ground on the exact flags with `jovida pack --help`.
 
 To author reliably, don't guess the schema — **ground on it first**:

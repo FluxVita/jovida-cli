@@ -10,6 +10,8 @@ import { cmdPoll } from './commands/poll'
 import { cmdStream } from './commands/stream'
 import { cmdPack } from './commands/pack'
 import { cmdAutomations } from './commands/automations'
+import { cmdWorker } from './commands/worker'
+import { cmdTask } from './commands/task'
 import { cmdEmit } from './commands/emit'
 import { cmdImport } from './commands/import'
 import { cmdView } from './commands/view'
@@ -137,6 +139,10 @@ Usage:
                # e.g. jovida pack save --name rain-umbrella --all  ·  jovida pack install rain-umbrella
   jovida automations [--json]
                # one screen: every source + rule + pack + the daemon's state (the trigger "home")
+  jovida worker start|stop|status|config
+               # a resident worker that runs dispatched tasks through a local agent (claude/codex/…)
+  jovida task add|list|show|clear
+               # the agent worker's task queue (a rule's --dispatch enqueues here)
   jovida import lark [--category <s>] [--dry-run] [--json]
                # one-way import of your incomplete Lark/Feishu tasks (idempotent, re-runnable)
   jovida view <entry_id|recurring_id> [--fresh] [--json]
@@ -340,6 +346,9 @@ Actions (give at least one; multiple --exec = multiple actions, run in order):
                          --create-priority <p>, --create-category <s>. title/when/… DO support {title}
                          {source} {data.x} {today} … placeholders and are safe (run via argv, no shell).
   --complete <id>        complete a todo by id (templated, e.g. --complete "{id}" or "{data.entry_id}").
+  --dispatch <prompt>    queue a task for the local agent worker to actually do (templated). Companions:
+                         --dispatch-cwd <dir>, --dispatch-todo <id>. Needs a running worker with an
+                         agent configured (jovida worker start; jovida worker config). See: jovida help worker.
   --notify-title <s>     fire a Jovida-branded desktop notification (--notify-message / --subtitle too).
                          These DO support {title} {source} {type} {data.x} {today} {tomorrow} placeholders
                          (safe — notify never touches a shell).
@@ -354,6 +363,8 @@ Examples:
   jovida rules add --when claude.commit --where title=~^feat --create "推送并开 PR：{title}" --create-when "{today}" --create-priority high
   # dry-run: which rules would a claude.commit fire?
   jovida rules test --source claude --type commit --title "feat(x): y"
+  # when a todo lands in category 'agent', hand it to the local agent worker to actually do:
+  jovida rules add --when todo.added --where category==agent --dispatch "完成这个待办：{title}。说明：{data.description}" --dispatch-todo "{data.entry_id}"
 `,
   emit: `jovida emit — push a custom event into the trigger engine (become a source)
 
@@ -449,6 +460,47 @@ Examples:
   jovida stream add --cmd 'my-event-source --jsonl'    # each line: {"source":"x","type":"y","title":"z"}
   # preview what a command emits before saving it:
   jovida stream test --source app --type error --cmd 'printf "{\\"title\\":\\"boom\\"}\\n"'
+`,
+  worker: `jovida worker — a resident worker that runs dispatched tasks through a local agent
+
+Usage:
+  jovida worker start | stop | status | restart
+  jovida worker run                    # foreground (what 'start' detaches; for debugging)
+  jovida worker config [--agent-cmd '<cmd>'] [--cwd <dir>] [--timeout <sec>]   # show/set config
+
+The fourth piece of the trigger system (sources → rules → … → the worker actually DOES things). A rule's
+'--dispatch <prompt>' queues a task; this long-lived worker pulls tasks **one at a time** (serial — never
+two agents at once), runs your configured agent command on each, logs it, and marks it done/failed. On
+finish it emits a 'task.done' / 'task.failed' event back into the engine, so a rule can react (e.g.
+complete the linked todo). Separate process from the daemon; it doesn't need the network.
+
+Configure the agent command (required — the worker fails tasks until you set it, it never guesses):
+  jovida worker config --agent-cmd 'claude -p "$JOVIDA_TASK_PROMPT"' --cwd ~/agent-workspace
+The command runs via 'sh -c' in the task's cwd. The prompt reaches it SAFELY as \$JOVIDA_TASK_PROMPT
+(and on stdin) — it is never interpolated into the command string. Also set: JOVIDA_TASK_ID,
+JOVIDA_TODO_ID, JOVIDA_TASK_CWD. Any agent CLI works (claude, codex, …) — you own the command.
+
+Safety: an autonomous agent triggered by events is powerful. The worker only runs when you start it, only
+runs the command you configured, one task at a time, with a timeout (default 30m). Inspect with 'jovida task'.
+
+Needs 'jovida daemon' running too if you want dispatch-from-rules and the task.done feedback loop.
+Logs to ~/.jovida/cli/worker.log; per-task output to ~/.jovida/cli/tasks/<id>.log.
+`,
+  task: `jovida task — the agent worker's task queue
+
+Usage:
+  jovida task add "<instruction>" [--cwd <dir>] [--todo <entry_id>] [--agent '<cmd>']
+  jovida task list [--json]                 # queued / running / done / failed
+  jovida task show <id> [--json]            # detail + last 40 log lines
+  jovida task clear                         # remove finished (done/failed) tasks
+
+A task is a prompt the local agent worker runs (see: jovida help worker). Tasks are usually created by a
+rule's '--dispatch', but you can queue one by hand with 'task add'. --todo links a todo (carried on the
+task.done event so a rule can complete it); --agent overrides the worker's configured command for this task.
+
+Examples:
+  jovida task add "把 README 的安装步骤更新到最新的 flags" --cwd ~/proj
+  jovida worker start && jovida task list        # watch it get picked up
 `,
   automations: `jovida automations — one screen for the whole trigger setup (alias: jovida auto)
 
@@ -757,6 +809,9 @@ async function main(): Promise<void> {
         createPriority: str(flags['create-priority']),
         createCategory: str(flags['create-category']),
         complete: str(flags.complete),
+        dispatch: str(flags.dispatch),
+        dispatchCwd: str(flags['dispatch-cwd']),
+        dispatchTodo: str(flags['dispatch-todo']),
         cooldown: num(flags.cooldown),
         disabled: flags.disabled === true,
         envelope: str(flags.envelope),
@@ -770,6 +825,25 @@ async function main(): Promise<void> {
     case 'automations':
     case 'auto':
       cmdAutomations({ json })
+      break
+    case 'worker':
+      await cmdWorker({
+        action: positionals[0],
+        agentCmd: str(flags['agent-cmd']),
+        cwd: str(flags.cwd),
+        timeout: num(flags.timeout),
+        json
+      })
+      break
+    case 'task':
+      cmdTask({
+        action: positionals[0],
+        positionals: positionals.slice(1),
+        cwd: str(flags.cwd),
+        todo: str(flags.todo),
+        agent: arr(flags.agent)?.at(-1), // 'agent' 是可重复 flag(与 skill 共用),取最后一个当单值
+        json
+      })
       break
     case 'emit':
       cmdEmit({

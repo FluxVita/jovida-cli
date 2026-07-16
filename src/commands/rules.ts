@@ -17,7 +17,8 @@ import {
   type Action,
   type Envelope,
   type NotifySpec,
-  type CreateSpec
+  type CreateSpec,
+  type DispatchSpec
 } from '../core/rules'
 
 // exec 不插值(靠 $JOVIDA_*),原样回显;create/complete 是 argv 数组(非 shell),渲染后回显安全;notify 模板渲染。
@@ -25,6 +26,14 @@ function renderActionPreview(act: Action, env: Envelope): Record<string, unknown
   if ('exec' in act) return { exec: act.exec }
   if ('create' in act) return { create: buildCreateArgv(act.create, env) }
   if ('complete' in act) return { complete: buildCompleteArgv(act.complete, env) }
+  if ('dispatch' in act)
+    return {
+      dispatch: {
+        prompt: renderTemplate(act.dispatch.prompt, env),
+        ...(act.dispatch.cwd ? { cwd: renderTemplate(act.dispatch.cwd, env) } : {}),
+        ...(act.dispatch.todo_id ? { todo_id: renderTemplate(act.dispatch.todo_id, env) } : {})
+      }
+    }
   return {
     notify: {
       title: act.notify.title ? renderTemplate(act.notify.title, env) : `Jovida · ${env.source}.${env.type}`,
@@ -51,6 +60,9 @@ export interface RulesArgs {
   createPriority?: string
   createCategory?: string
   complete?: string // complete 动作:待办 id(模板,如 {id} / {data.entry_id})
+  dispatch?: string // dispatch 动作:交给本地 agent worker 的 prompt(模板)
+  dispatchCwd?: string
+  dispatchTodo?: string
   cooldown?: number
   disabled?: boolean
   // test 用:合成信封
@@ -91,6 +103,12 @@ function buildActions(a: RulesArgs): Action[] {
     acts.push({ create: c })
   }
   if (a.complete) acts.push({ complete: { id: a.complete } })
+  if (a.dispatch) {
+    const d: DispatchSpec = { prompt: a.dispatch }
+    if (a.dispatchCwd) d.cwd = a.dispatchCwd
+    if (a.dispatchTodo) d.todo_id = a.dispatchTodo
+    acts.push({ dispatch: d })
+  }
   return acts
 }
 
@@ -102,6 +120,7 @@ function actionSummary(act: Action): string {
     return `create: ${c.title}${extra ? '  (' + extra + ')' : ''}`
   }
   if ('complete' in act) return `complete: ${act.complete.id}`
+  if ('dispatch' in act) return `dispatch: "${act.dispatch.prompt.split('\n')[0].slice(0, 60)}"${act.dispatch.todo_id ? ` (todo ${act.dispatch.todo_id})` : ''}`
   const n = act.notify
   return `notify: ${n.title ?? '(default)'}${n.message ? ' — ' + n.message : ''}`
 }
@@ -170,7 +189,7 @@ export function cmdRules(a: RulesArgs): void {
         parseWhen(a.when) // 校验形状
         const actions = buildActions(a)
         if (actions.length === 0)
-          throw new Error('add needs an action: --exec <cmd>, --notify-title, --create <title>, and/or --complete <id>')
+          throw new Error('add needs an action: --exec <cmd>, --notify-title, --create <title>, --complete <id>, and/or --dispatch <prompt>')
         rule = {
           id: newRuleId(),
           name: a.name,
@@ -211,7 +230,7 @@ export function cmdRules(a: RulesArgs): void {
         rule: {
           when: '"<source>.<type>" | "<source>.*" | "<source>"',
           where: '{ "<field>": "<matcher>" } — AND-ed; field resolves top-level then data (bare "category" works); matcher: "~regex" | "=exact" | "substring"',
-          do: '[ actions ] — run in order. one of: {"exec":"sh -c command"} | {"notify":{"title":"…","message":"…","subtitle":"…"}} | {"create":{"title":"…","when":"…","priority":"…","category":"…","desc":"…","hint":"…"}} | {"complete":{"id":"…"}}',
+          do: '[ actions ] — run in order. one of: {"exec":"sh -c command"} | {"notify":{"title":"…","message":"…","subtitle":"…"}} | {"create":{"title":"…","when":"…","priority":"…","category":"…","desc":"…","hint":"…"}} | {"complete":{"id":"…"}} | {"dispatch":{"prompt":"…","cwd":"…","todo_id":"…"}} (queue a task for the local agent worker; see: jovida worker --help)',
           enabled: 'boolean (default true)',
           cooldown_sec: 'number? — min seconds between fires'
         },
@@ -281,6 +300,7 @@ export function cmdRules(a: RulesArgs): void {
           if ('exec' in act) console.log(`    exec: ${act.exec}`)
           else if ('create' in act) console.log(`    create → jovida ${buildCreateArgv(act.create, env).join(' ')}`)
           else if ('complete' in act) console.log(`    complete → jovida ${buildCompleteArgv(act.complete, env).join(' ')}`)
+          else if ('dispatch' in act) console.log(`    dispatch → worker task: "${renderTemplate(act.dispatch.prompt, env)}"`)
           else {
             const title = act.notify.title ? renderTemplate(act.notify.title, env) : `Jovida · ${env.source}.${env.type}`
             const message = act.notify.message ? renderTemplate(act.notify.message, env) : env.title ?? ''
