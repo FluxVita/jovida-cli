@@ -20,8 +20,11 @@ function printStatus(json: boolean): void {
   }
   const conn = status.connected ? 'connected' : 'disconnected'
   const due = status.overdue || status.upcoming ? `${status.overdue} overdue · ${status.upcoming} upcoming` : 'nothing due'
-  const rules = status.rules ? ` · ${status.rules} rules` : ''
-  console.log(`● running · pid ${status.pid} · ${conn} · store v=${status.storeVersion} · ${due}${rules}`)
+  // 自动化装载:规则 + 三类源(poll/stream 计数),都非零才各自显示,保持单行简洁
+  const autos = [status.rules && `${status.rules} rules`, status.polls && `${status.polls} polls`, status.streams && `${status.streams} streams`]
+    .filter(Boolean)
+    .join(' · ')
+  console.log(`● running · pid ${status.pid} · ${conn} · store v=${status.storeVersion} · ${due}${autos ? ' · ' + autos : ''}`)
 }
 
 export async function cmdDaemon(ctx: Ctx, a: DaemonArgs): Promise<void> {
