@@ -17,7 +17,7 @@ import { computeDue, reminderFires } from './core/due'
 import { renderBrief } from './core/brief'
 import { diffSnapshots, type ChangeKind } from './core/diff'
 import { toListItem } from './core/convert'
-import { drainEvents, ensureEventsDir, EVENTS_DIR } from './core/rules'
+import { readEvents, discardEvent, isEventStale, ensureEventsDir, EVENTS_DIR } from './core/rules'
 import { notify } from './notify'
 import { runRules, activeRuleCount } from './rules'
 import { startPolling, activePollCount } from './poll'
@@ -320,11 +320,16 @@ export async function runDaemon(ctx: Ctx): Promise<void> {
   }
 
   // 取走 spool 里的推送事件(jovida emit 写的),逐条过规则引擎。守护不在时事件排队,起来即处理。
+  // **至少一次**:先派发(runRules)再删文件——崩溃残留下次重放(代价:可能重触发);陈旧事件(超 TTL)读出即弃不触发。
   const drainSpool = (): void => {
     if (draining) return
     draining = true
     try {
-      for (const env of drainEvents()) runRules(env, logLine)
+      for (const { env, path } of readEvents()) {
+        if (isEventStale(env, nowSec())) logLine(`spool: dropped stale ${env.source}.${env.type} (age > TTL)`)
+        else runRules(env, logLine)
+        discardEvent(path) // 派发后(或判弃后)才删
+      }
     } catch (e) {
       logLine(`drainSpool failed: ${(e as Error).message}`)
     } finally {

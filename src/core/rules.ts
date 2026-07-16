@@ -283,8 +283,13 @@ export function writeEvent(env: Envelope): string {
   renameSync(tmp, dst) // 同目录原子改名
   return dst
 }
-/** 取走并删除所有已落盘的推送事件(按文件名≈时间序 FIFO)。坏文件跳过。 */
-export function drainEvents(): Envelope[] {
+// 陈旧事件 TTL:守护离线很久后再起,不该把积压多时的旧 emit 一股脑补触发(如三天前的 claude.commit)。
+// 超过 TTL 的事件读出即弃(不触发)。默认 1h,可用 JOVIDA_EMIT_TTL_SEC 调(≤0 关闭 TTL)。
+const ttlEnv = Number(process.env['JOVIDA_EMIT_TTL_SEC'])
+export const EMIT_TTL_SEC = Number.isFinite(ttlEnv) ? ttlEnv : 3600
+
+/** 读出所有已落盘的推送事件(按文件名≈时间序 FIFO),**不删**——留待派发后再删(至少一次)。坏文件立即删(毒丸,别反复重读)。 */
+export function readEvents(): { env: Envelope; path: string }[] {
   let files: string[]
   try {
     files = readdirSync(EVENTS_DIR)
@@ -293,20 +298,38 @@ export function drainEvents(): Envelope[] {
   } catch {
     return []
   }
-  const out: Envelope[] = []
+  const out: { env: Envelope; path: string }[] = []
   for (const f of files) {
     const p = join(EVENTS_DIR, f)
     try {
       const env = JSON.parse(readFileSync(p, 'utf8')) as Envelope
-      if (env && typeof env.source === 'string' && typeof env.type === 'string') out.push(env)
+      if (env && typeof env.source === 'string' && typeof env.type === 'string') {
+        out.push({ env, path: p })
+        continue
+      }
     } catch {
-      /* 坏文件:跳过 */
+      /* 落到下面删 */
     }
     try {
-      rmSync(p)
+      rmSync(p) // 坏文件/半截文件:立即删
     } catch {
       /* 删不掉也无妨 */
     }
   }
   return out
+}
+
+/** 派发完一条事件后删除其 spool 文件(至少一次的「确认」)。 */
+export function discardEvent(path: string): void {
+  try {
+    rmSync(path)
+  } catch {
+    /* 删不掉也无妨:下次重读会再派发(至少一次的代价是可能重触发) */
+  }
+}
+
+/** 事件是否已超 TTL(据其 at 时间戳;at 缺失则不判过期,宁可触发不误弃)。 */
+export function isEventStale(env: Envelope, nowSec: number): boolean {
+  if (EMIT_TTL_SEC <= 0 || !env.at) return false
+  return nowSec - env.at > EMIT_TTL_SEC
 }

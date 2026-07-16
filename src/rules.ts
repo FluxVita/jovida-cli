@@ -4,7 +4,7 @@
 // title/message/subtitle 支持 {占位} 模板)。
 import { statSync } from 'node:fs'
 import { join } from 'node:path'
-import { spawn, execFile } from 'node:child_process'
+import { spawn, execFile, type ExecFileException } from 'node:child_process'
 import {
   RULES_FILE,
   loadRules,
@@ -23,6 +23,8 @@ import { notify } from './notify'
 const CLI_PATH = join(__dirname, 'cli.js')
 
 const EXEC_TIMEOUT_MS = 30_000 // 单条 exec 动作最长 30s,超时杀掉(防卡死级联)
+const START_RETRIES = 2 // 动作**启动失败**(进程压根没跑起来,无副作用)才重试;非 0 退出/超时不重试(可能已产生副作用,重试会重复建待办等)
+const RETRY_BACKOFF_MS = 1000
 
 // ── rules.json mtime 缓存:高频事件不必每次读盘,文件变了才重载 ──
 let cached: Rule[] = []
@@ -50,22 +52,32 @@ const nowSec = (): number => Math.floor(Date.now() / 1000)
  * 刻意**不**把 {占位} 插进命令串——待办标题/提交信息等可含引号或 `;`,插值即 shell 注入。
  * 数据一律走环境变量($JOVIDA_TITLE 等)+ stdin(整条信封 JSON)。{占位} 模板只给 notify(不碰 shell)。
  */
-function runExec(rule: Rule, cmd: string, env: Envelope, log: (m: string) => void): void {
+function runExec(rule: Rule, cmd: string, env: Envelope, log: (m: string) => void, attempt = 0): void {
+  const retryStart = (why: string): void => {
+    if (attempt < START_RETRIES) {
+      const t = setTimeout(() => runExec(rule, cmd, env, log, attempt + 1), RETRY_BACKOFF_MS * (attempt + 1))
+      if (t.unref) t.unref()
+      log(`rule ${rule.id} exec start failed (${why}); retrying (${attempt + 1}/${START_RETRIES})`)
+    } else {
+      log(`rule ${rule.id} exec start failed (${why}); gave up after ${START_RETRIES} retries`)
+    }
+  }
   const childEnv: NodeJS.ProcessEnv = { ...process.env, ...envToEnvVars(env) }
   let child
   try {
     child = spawn('sh', ['-c', cmd], { env: childEnv, stdio: ['pipe', 'pipe', 'pipe'] })
   } catch (e) {
-    log(`rule ${rule.id} exec spawn failed: ${(e as Error).message}`)
+    retryStart((e as Error).message) // 同步抛=没跑起来,可安全重试
     return
   }
+  let settled = false // 'error' 与 'close' 去重(启动失败时可能都触发)
   const killer = setTimeout(() => {
     try {
       child.kill('SIGKILL')
     } catch {
       /* 已退出 */
     }
-    log(`rule ${rule.id} exec timed out (${EXEC_TIMEOUT_MS}ms), killed`)
+    log(`rule ${rule.id} exec timed out (${EXEC_TIMEOUT_MS}ms), killed`) // 超时**不**重试(可能已有副作用)
   }, EXEC_TIMEOUT_MS)
   if (killer.unref) killer.unref()
 
@@ -73,13 +85,17 @@ function runExec(rule: Rule, cmd: string, env: Envelope, log: (m: string) => voi
   child.stdout?.on('data', (d) => (out += String(d)))
   child.stderr?.on('data', (d) => (out += String(d)))
   child.on('error', (e) => {
+    if (settled) return
+    settled = true
     clearTimeout(killer)
-    log(`rule ${rule.id} exec error: ${e.message}`)
+    retryStart(e.message) // 异步启动失败(ENOENT/EAGAIN 等):进程没跑,可安全重试
   })
   child.on('close', (code) => {
+    if (settled) return
+    settled = true
     clearTimeout(killer)
     const tail = out.trim().slice(0, 500)
-    log(`rule ${rule.id} exec done (exit ${code ?? '?'})${tail ? ': ' + tail : ''}`)
+    log(`rule ${rule.id} exec done (exit ${code ?? '?'})${tail ? ': ' + tail : ''}`) // 跑完(哪怕非 0)=不重试
   })
   try {
     child.stdin?.end(JSON.stringify(env) + '\n')
@@ -92,11 +108,23 @@ function runExec(rule: Rule, cmd: string, env: Envelope, log: (m: string) => voi
  * create/complete 动作:跑本 CLI(`node cli.js <argv…>`)。**execFile 数组传参、非 shell**,故渲染后的
  * 标题/分类含引号或 `;` 也安全(不像 exec 那样是注入面)。子进程继承 JOVIDA_HOME+token,复用建待办/完成全套。
  */
-function runCli(rule: Rule, argv: string[], log: (m: string) => void): void {
+function runCli(rule: Rule, argv: string[], log: (m: string) => void, attempt = 0): void {
   execFile(process.execPath, [CLI_PATH, ...argv], { env: process.env, timeout: EXEC_TIMEOUT_MS }, (err, stdout, stderr) => {
     const tail = ((stdout || '') + (stderr || '')).trim().slice(0, 300)
-    if (err) log(`rule ${rule.id} ${argv[0]} failed: ${err.message}${tail ? ' — ' + tail : ''}`)
-    else log(`rule ${rule.id} ${argv[0]} ok${tail ? ': ' + tail : ''}`)
+    if (!err) {
+      log(`rule ${rule.id} ${argv[0]} ok${tail ? ': ' + tail : ''}`)
+      return
+    }
+    const e = err as ExecFileException
+    // 只重试**启动失败**(code 是字符串 errno 如 ENOENT/EAGAIN,且非超时 kill);非 0 退出(code 是数字)/超时=可能已写入,不重试(免重复建待办)。
+    const startFailed = typeof e.code === 'string' && !e.killed
+    if (startFailed && attempt < START_RETRIES) {
+      const t = setTimeout(() => runCli(rule, argv, log, attempt + 1), RETRY_BACKOFF_MS * (attempt + 1))
+      if (t.unref) t.unref()
+      log(`rule ${rule.id} ${argv[0]} start failed (${e.code}); retrying (${attempt + 1}/${START_RETRIES})`)
+      return
+    }
+    log(`rule ${rule.id} ${argv[0]} failed: ${err.message}${tail ? ' — ' + tail : ''}`)
   })
 }
 

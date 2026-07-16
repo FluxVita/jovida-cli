@@ -9,6 +9,7 @@ import { cmdRules } from './commands/rules'
 import { cmdPoll } from './commands/poll'
 import { cmdStream } from './commands/stream'
 import { cmdPack } from './commands/pack'
+import { cmdAutomations } from './commands/automations'
 import { cmdEmit } from './commands/emit'
 import { cmdImport } from './commands/import'
 import { cmdView } from './commands/view'
@@ -134,6 +135,8 @@ Usage:
   jovida pack export|import|save|install|list|show|rm
                # bundle a whole automation (sources + rules) into one shareable file — a "shortcut"
                # e.g. jovida pack save --name rain-umbrella --all  ·  jovida pack install rain-umbrella
+  jovida automations [--json]
+               # one screen: every source + rule + pack + the daemon's state (the trigger "home")
   jovida import lark [--category <s>] [--dry-run] [--json]
                # one-way import of your incomplete Lark/Feishu tasks (idempotent, re-runnable)
   jovida view <entry_id|recurring_id> [--fresh] [--json]
@@ -365,6 +368,11 @@ Fire-and-forget: it writes the envelope to a spool (~/.jovida/cli/events/) and e
 daemon isn't running — queued events are processed when the daemon next starts. 'at' is filled in
 automatically. --data is arbitrary JSON stored under the envelope's 'data' (matchable via --where data.x).
 
+Delivery: at-least-once — the daemon deletes a spooled event only after dispatching it, so a crash
+mid-drain re-processes it (an action may fire twice; keep actions idempotent where it matters). Events
+older than JOVIDA_EMIT_TTL_SEC (default 3600) are dropped un-fired, so a daemon started after a long
+absence doesn't replay a backlog of stale triggers (set ≤0 to disable the TTL).
+
 Examples:
   jovida emit claude commit --title "feat(rules): 待办即触发器"
   jovida emit weather rain --title "杭州有雨" --data '{"city":"Hangzhou","cond":"Light rain"}'
@@ -441,6 +449,21 @@ Examples:
   jovida stream add --cmd 'my-event-source --jsonl'    # each line: {"source":"x","type":"y","title":"z"}
   # preview what a command emits before saving it:
   jovida stream test --source app --type error --cmd 'printf "{\\"title\\":\\"boom\\"}\\n"'
+`,
+  automations: `jovida automations — one screen for the whole trigger setup (alias: jovida auto)
+
+Usage:
+  jovida automations [--json]
+
+A read-only overview that pulls together what's otherwise spread across 'rules list', 'poll list',
+'stream list', and 'pack list', plus the daemon's state. Shows:
+  - the daemon (running? connected? pid)
+  - Sources: built-in 'todo', push ('jovida emit'), your poll sources, your stream sources
+  - Rules: each rule's when [where] → actions
+  - Packs: your saved shareable bundles
+
+Use it to see your automation setup at a glance; use the per-kind commands (rules/poll/stream/pack)
+to add, edit, or inspect details.
 `,
   pack: `jovida pack — bundle a whole automation into one shareable file (your "shortcuts library")
 
@@ -743,6 +766,10 @@ async function main(): Promise<void> {
         data: str(flags.data),
         json
       })
+      break
+    case 'automations':
+    case 'auto':
+      cmdAutomations({ json })
       break
     case 'emit':
       cmdEmit({

@@ -11,6 +11,8 @@ import {
   validateRuleSpec,
   buildCreateArgv,
   buildCompleteArgv,
+  isEventStale,
+  EMIT_TTL_SEC,
   type Rule,
   type Envelope
 } from '../src/core/rules'
@@ -144,6 +146,14 @@ test('buildCompleteArgv: templated id', () => {
   const e = env('x', 'done', { id: 'ent_9', data: { entry_id: 'ent_9' } })
   assert.deepEqual(buildCompleteArgv({ id: '{id}' }, e), ['complete', 'ent_9'])
   assert.deepEqual(buildCompleteArgv({ id: '{data.entry_id}' }, e), ['complete', 'ent_9'])
+})
+
+test('isEventStale: drops events older than TTL; keeps fresh; no-at never stale', () => {
+  const now = 1_000_000
+  assert.equal(EMIT_TTL_SEC, 3600) // 默认 1h
+  assert.equal(isEventStale({ source: 's', type: 't', at: now - 100 }, now), false) // 新鲜
+  assert.equal(isEventStale({ source: 's', type: 't', at: now - 4000 }, now), true) // 超 1h
+  assert.equal(isEventStale({ source: 's', type: 't' }, now), false) // 无 at → 宁触发不误弃
 })
 
 test('envToEnvVars: top-level + data flattened + JOVIDA_DATA', () => {
