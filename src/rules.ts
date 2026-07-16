@@ -3,18 +3,24 @@
 // 动作两种(MVP):exec(sh -c,信封 JSON 走 stdin + JOVIDA_* 环境变量,30s 超时)、notify(品牌化桌面通知,
 // title/message/subtitle 支持 {占位} 模板)。
 import { statSync } from 'node:fs'
-import { spawn } from 'node:child_process'
+import { join } from 'node:path'
+import { spawn, execFile } from 'node:child_process'
 import {
   RULES_FILE,
   loadRules,
   matchRule,
   renderTemplate,
   envToEnvVars,
+  buildCreateArgv,
+  buildCompleteArgv,
   type Rule,
   type Envelope,
   type NotifySpec
 } from './core/rules'
 import { notify } from './notify'
+
+// 本 CLI 自身的入口(dist/cli.js,与 dist/rules.js 同级)。create/complete 动作即跑它,复用登录/建待办/缓存失效全套。
+const CLI_PATH = join(__dirname, 'cli.js')
 
 const EXEC_TIMEOUT_MS = 30_000 // 单条 exec 动作最长 30s,超时杀掉(防卡死级联)
 
@@ -82,6 +88,18 @@ function runExec(rule: Rule, cmd: string, env: Envelope, log: (m: string) => voi
   }
 }
 
+/**
+ * create/complete 动作:跑本 CLI(`node cli.js <argv…>`)。**execFile 数组传参、非 shell**,故渲染后的
+ * 标题/分类含引号或 `;` 也安全(不像 exec 那样是注入面)。子进程继承 JOVIDA_HOME+token,复用建待办/完成全套。
+ */
+function runCli(rule: Rule, argv: string[], log: (m: string) => void): void {
+  execFile(process.execPath, [CLI_PATH, ...argv], { env: process.env, timeout: EXEC_TIMEOUT_MS }, (err, stdout, stderr) => {
+    const tail = ((stdout || '') + (stderr || '')).trim().slice(0, 300)
+    if (err) log(`rule ${rule.id} ${argv[0]} failed: ${err.message}${tail ? ' — ' + tail : ''}`)
+    else log(`rule ${rule.id} ${argv[0]} ok${tail ? ': ' + tail : ''}`)
+  })
+}
+
 /** notify 动作:模板渲染后弹品牌化桌面通知(缺省 title="源 · 类型"、message=标题)。 */
 function runNotify(spec: NotifySpec, env: Envelope): void {
   const title = spec.title ? renderTemplate(spec.title, env) : `Jovida · ${env.source}.${env.type}`
@@ -95,7 +113,9 @@ function fireRule(rule: Rule, env: Envelope, log: (m: string) => void): void {
   for (const a of rule.do) {
     try {
       if ('exec' in a) runExec(rule, a.exec, env, log)
-      else runNotify(a.notify, env)
+      else if ('notify' in a) runNotify(a.notify, env)
+      else if ('create' in a) runCli(rule, buildCreateArgv(a.create, env), log)
+      else if ('complete' in a) runCli(rule, buildCompleteArgv(a.complete, env), log)
     } catch (e) {
       log(`rule ${rule.id} action failed: ${(e as Error).message}`)
     }

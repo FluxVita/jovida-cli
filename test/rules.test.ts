@@ -9,6 +9,8 @@ import {
   renderTemplate,
   envToEnvVars,
   validateRuleSpec,
+  buildCreateArgv,
+  buildCompleteArgv,
   type Rule,
   type Envelope
 } from '../src/core/rules'
@@ -108,6 +110,40 @@ test('validateRuleSpec: clear errors for bad input', () => {
   assert.throws(() => validateRuleSpec('{"do":[{"exec":"x"}]}'), /needs "when"/)
   assert.throws(() => validateRuleSpec('{"when":"todo.completed"}'), /at least one action/)
   assert.throws(() => validateRuleSpec('{"when":"todo.completed","do":[{"exec":"x"}],"where":[]}'), /"where" must be/)
+})
+
+test('parseRules / validateRuleSpec: create & complete actions accepted', () => {
+  const parsed = parseRules(
+    JSON.stringify({
+      rules: [
+        { id: 'a', when: 'claude.commit', do: [{ create: { title: 'PR {title}', when: '{today}', priority: 'high' } }] },
+        { id: 'b', when: 'x.done', do: [{ complete: { id: '{data.entry_id}' } }] },
+        { id: 'c', when: 'x.y', do: [{ create: { when: '{today}' } }] } // create 无 title → 该动作无效 → 无动作 → 整条丢弃
+      ]
+    })
+  )
+  assert.deepEqual(parsed.map((r) => r.id), ['a', 'b'])
+  assert.ok('create' in parsed[0].do[0])
+  const r = validateRuleSpec('{"when":"claude.commit","do":[{"create":{"title":"x"}}]}')
+  assert.ok('create' in r.do[0])
+})
+
+test('buildCreateArgv: templated, omits empty optionals, argv-safe (no shell)', () => {
+  const e = env('claude', 'commit', { title: 'feat: 带"引号"; 和分号', data: { entry_id: 'e1' } })
+  const argv = buildCreateArgv({ title: 'PR：{title}', when: '{today}', priority: 'high' }, e)
+  assert.equal(argv[0], 'create')
+  assert.equal(argv[1], 'PR：feat: 带"引号"; 和分号') // 引号/分号作为单个 argv 元素,安全
+  assert.match(argv[argv.indexOf('--when') + 1], /^\d{4}-\d{2}-\d{2}$/)
+  assert.equal(argv[argv.indexOf('--priority') + 1], 'high')
+  assert.equal(argv.includes('--category'), false) // 未给 → 不加
+  // 只有 title(其余省略)
+  assert.deepEqual(buildCreateArgv({ title: '仅标题' }, e), ['create', '仅标题'])
+})
+
+test('buildCompleteArgv: templated id', () => {
+  const e = env('x', 'done', { id: 'ent_9', data: { entry_id: 'ent_9' } })
+  assert.deepEqual(buildCompleteArgv({ id: '{id}' }, e), ['complete', 'ent_9'])
+  assert.deepEqual(buildCompleteArgv({ id: '{data.entry_id}' }, e), ['complete', 'ent_9'])
 })
 
 test('envToEnvVars: top-level + data flattened + JOVIDA_DATA', () => {

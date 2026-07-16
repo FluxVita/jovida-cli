@@ -29,7 +29,20 @@ export interface NotifySpec {
   message?: string
   subtitle?: string
 }
-export type Action = { exec: string } | { notify: NotifySpec }
+// create/complete:写待办的一等公民动作(exec 'jovida create' 的糖)。字段走模板渲染,但**不经 shell**——
+// 引擎用 argv 数组直接跑 cli.js(数组传参、非字符串拼接),故 {占位} 在这里安全(不像 exec 那样是注入面)。
+export interface CreateSpec {
+  title: string
+  when?: string
+  priority?: string
+  category?: string
+  desc?: string
+  hint?: string
+}
+export interface CompleteSpec {
+  id: string
+}
+export type Action = { exec: string } | { notify: NotifySpec } | { create: CreateSpec } | { complete: CompleteSpec }
 
 // ── 规则:绑定 ──
 export interface Rule {
@@ -75,9 +88,11 @@ function whenToString(when: unknown): string {
 
 // ── 读写 rules.json（容错:坏结构/坏项一律跳过,绝不抛,避免拖垮守护）──
 function normalizeAction(a: unknown): Action | null {
-  const act = a as { exec?: unknown; notify?: unknown }
+  const act = a as { exec?: unknown; notify?: unknown; create?: unknown; complete?: unknown }
   if (act && typeof act.exec === 'string') return { exec: act.exec }
   if (act && act.notify && typeof act.notify === 'object') return { notify: act.notify as NotifySpec }
+  if (act && act.create && typeof act.create === 'object' && typeof (act.create as CreateSpec).title === 'string') return { create: act.create as CreateSpec }
+  if (act && act.complete && typeof act.complete === 'object' && typeof (act.complete as CompleteSpec).id === 'string') return { complete: act.complete as CompleteSpec }
   return null
 }
 export function parseRules(text: string): Rule[] {
@@ -235,6 +250,26 @@ export function envToEnvVars(env: Envelope): Record<string, string> {
   }
   out.JOVIDA_DATA = JSON.stringify(env.data ?? {})
   return out
+}
+
+// ── create/complete 动作 → cli.js 的 argv(引擎 execFile 跑、test 预览用;纯函数)。
+// 字段模板渲染后作为**数组元素**传参(非 shell 拼接),故渲染值含引号/`;` 也安全。──
+export function buildCreateArgv(spec: CreateSpec, env: Envelope): string[] {
+  const argv = ['create', renderTemplate(spec.title, env)]
+  const add = (flag: string, v: string | undefined): void => {
+    if (!v) return
+    const r = renderTemplate(v, env)
+    if (r) argv.push(flag, r)
+  }
+  add('--when', spec.when)
+  add('--priority', spec.priority)
+  add('--category', spec.category)
+  add('--desc', spec.desc)
+  add('--hint', spec.hint)
+  return argv
+}
+export function buildCompleteArgv(spec: CompleteSpec, env: Envelope): string[] {
+  return ['complete', renderTemplate(spec.id, env)]
 }
 
 // ── 推送事件 spool:emit 原子写(tmp+rename,防守护读到半截),守护取走即删(FIFO) ──

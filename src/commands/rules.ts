@@ -8,14 +8,31 @@ import {
   parseWhen,
   newRuleId,
   validateRuleSpec,
+  buildCreateArgv,
+  buildCompleteArgv,
   TODO_EVENT_TYPES,
   TODO_DATA_FIELDS,
   RULES_FILE,
   type Rule,
   type Action,
   type Envelope,
-  type NotifySpec
+  type NotifySpec,
+  type CreateSpec
 } from '../core/rules'
+
+// exec 不插值(靠 $JOVIDA_*),原样回显;create/complete 是 argv 数组(非 shell),渲染后回显安全;notify 模板渲染。
+function renderActionPreview(act: Action, env: Envelope): Record<string, unknown> {
+  if ('exec' in act) return { exec: act.exec }
+  if ('create' in act) return { create: buildCreateArgv(act.create, env) }
+  if ('complete' in act) return { complete: buildCompleteArgv(act.complete, env) }
+  return {
+    notify: {
+      title: act.notify.title ? renderTemplate(act.notify.title, env) : `Jovida · ${env.source}.${env.type}`,
+      message: act.notify.message ? renderTemplate(act.notify.message, env) : env.title ?? '',
+      subtitle: act.notify.subtitle ? renderTemplate(act.notify.subtitle, env) : undefined
+    }
+  }
+}
 
 export interface RulesArgs {
   action?: string // list | add | rm | enable | disable | test | spec
@@ -29,6 +46,11 @@ export interface RulesArgs {
   notifyTitle?: string
   notifyMessage?: string
   subtitle?: string
+  create?: string // create 动作:标题(模板);配 createWhen/priority/category
+  createWhen?: string
+  createPriority?: string
+  createCategory?: string
+  complete?: string // complete 动作:待办 id(模板,如 {id} / {data.entry_id})
   cooldown?: number
   disabled?: boolean
   // test 用:合成信封
@@ -61,11 +83,25 @@ function buildActions(a: RulesArgs): Action[] {
     if (a.subtitle) n.subtitle = a.subtitle
     acts.push({ notify: n })
   }
+  if (a.create) {
+    const c: CreateSpec = { title: a.create }
+    if (a.createWhen) c.when = a.createWhen
+    if (a.createPriority) c.priority = a.createPriority
+    if (a.createCategory) c.category = a.createCategory
+    acts.push({ create: c })
+  }
+  if (a.complete) acts.push({ complete: { id: a.complete } })
   return acts
 }
 
 function actionSummary(act: Action): string {
   if ('exec' in act) return `exec: ${act.exec}`
+  if ('create' in act) {
+    const c = act.create
+    const extra = [c.when && `when ${c.when}`, c.priority && `priority ${c.priority}`, c.category && `category ${c.category}`].filter(Boolean).join(', ')
+    return `create: ${c.title}${extra ? '  (' + extra + ')' : ''}`
+  }
+  if ('complete' in act) return `complete: ${act.complete.id}`
   const n = act.notify
   return `notify: ${n.title ?? '(default)'}${n.message ? ' — ' + n.message : ''}`
 }
@@ -134,7 +170,7 @@ export function cmdRules(a: RulesArgs): void {
         parseWhen(a.when) // 校验形状
         const actions = buildActions(a)
         if (actions.length === 0)
-          throw new Error('add needs an action: --exec <cmd> (repeatable) and/or --notify-title/--notify-message')
+          throw new Error('add needs an action: --exec <cmd>, --notify-title, --create <title>, and/or --complete <id>')
         rule = {
           id: newRuleId(),
           name: a.name,
@@ -175,13 +211,13 @@ export function cmdRules(a: RulesArgs): void {
         rule: {
           when: '"<source>.<type>" | "<source>.*" | "<source>"',
           where: '{ "<field>": "<matcher>" } — AND-ed; field resolves top-level then data (bare "category" works); matcher: "~regex" | "=exact" | "substring"',
-          do: '[ {"exec":"sh -c command"} | {"notify":{"title":"…","message":"…","subtitle":"…"}} ] — run in order',
+          do: '[ actions ] — run in order. one of: {"exec":"sh -c command"} | {"notify":{"title":"…","message":"…","subtitle":"…"}} | {"create":{"title":"…","when":"…","priority":"…","category":"…","desc":"…","hint":"…"}} | {"complete":{"id":"…"}}',
           enabled: 'boolean (default true)',
           cooldown_sec: 'number? — min seconds between fires'
         },
         execEnv: ['JOVIDA_SOURCE', 'JOVIDA_TYPE', 'JOVIDA_TITLE', 'JOVIDA_ID', 'JOVIDA_AT', 'JOVIDA_TODAY', 'JOVIDA_TOMORROW', 'JOVIDA_<DATA_KEY>', 'JOVIDA_DATA'],
-        templatePlaceholders: { where: 'notify title/message/subtitle only', tokens: ['{title}', '{source}', '{type}', '{id}', '{data.x}', '{today}', '{tomorrow}'] },
-        safety: 'exec is NOT string-interpolated (injection-safe); pass data via $JOVIDA_* env vars + the envelope JSON on stdin. {…} templates are for notify only.',
+        templatePlaceholders: { where: 'notify + create + complete fields (NOT exec)', tokens: ['{title}', '{source}', '{type}', '{id}', '{data.x}', '{today}', '{tomorrow}'] },
+        safety: 'exec is NOT string-interpolated (injection-safe): pass data via $JOVIDA_* env vars + the envelope JSON on stdin. notify/create/complete ARE {…}-templated but never touch a shell (create/complete run the CLI via argv array), so their templates are safe. Prefer create over `exec jovida create …` — it needs no shell-quoting.',
         apply: "jovida rules add --spec '<rule-json>' [--dry-run]"
       }
       if (json) {
@@ -228,17 +264,7 @@ export function cmdRules(a: RulesArgs): void {
             matched: hits.map((r) => ({
               id: r.id,
               name: r.name,
-              do: r.do.map((act) =>
-                'exec' in act
-                  ? { exec: act.exec } // exec 不插值(靠 $JOVIDA_* 环境变量),原样回显
-                  : {
-                      notify: {
-                        title: act.notify.title ? renderTemplate(act.notify.title, env) : `Jovida · ${env.source}.${env.type}`,
-                        message: act.notify.message ? renderTemplate(act.notify.message, env) : env.title ?? '',
-                        subtitle: act.notify.subtitle ? renderTemplate(act.notify.subtitle, env) : undefined
-                      }
-                    }
-              )
+              do: r.do.map((act) => renderActionPreview(act, env))
             }))
           })
         )
@@ -253,6 +279,8 @@ export function cmdRules(a: RulesArgs): void {
         console.log(`→ ${r.id}${r.name ? ' (' + r.name + ')' : ''} would fire:`)
         for (const act of r.do) {
           if ('exec' in act) console.log(`    exec: ${act.exec}`)
+          else if ('create' in act) console.log(`    create → jovida ${buildCreateArgv(act.create, env).join(' ')}`)
+          else if ('complete' in act) console.log(`    complete → jovida ${buildCompleteArgv(act.complete, env).join(' ')}`)
           else {
             const title = act.notify.title ? renderTemplate(act.notify.title, env) : `Jovida · ${env.source}.${env.type}`
             const message = act.notify.message ? renderTemplate(act.notify.message, env) : env.title ?? ''

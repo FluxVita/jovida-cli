@@ -68,7 +68,7 @@ Map the user's intent to a sequence; read before any change.
 
 Beyond capturing todos, the user can ask for **standing automations**: "when I finish a 健身 todo, celebrate", "when I commit a feature, remind me to open a PR". You can author these — the CLI has a small trigger engine (a background daemon runs the rules).
 
-The engine speaks one **event envelope** `{ source, type, title?, id?, at?, data? }`. A **rule** matches an envelope by `when` (`<source>.<type>`) + optional `where` field filters, and runs `do` actions (`exec` a shell command, or `notify`). Events reach the engine four ways — all feed the same rules:
+The engine speaks one **event envelope** `{ source, type, title?, id?, at?, data? }`. A **rule** matches an envelope by `when` (`<source>.<type>`) + optional `where` field filters, and runs `do` actions: **`create`** a todo / **`complete`** one (first-class, `{title}`/`{today}`-templated, no shell-quoting — prefer these for todo writes), **`notify`** (branded desktop), or **`exec`** an arbitrary shell command (data via `$JOVIDA_*` env vars, never interpolated). Events reach the engine four ways — all feed the same rules:
 - **`todo`** (built-in): fires on `todo.added/updated/completed/reopened/deleted` and `todo.reminder/overdue`.
 - **push**: anything that runs `jovida emit <source> <type> …` — a git hook, cron, a script (one event per call).
 - **poll** (`jovida poll add …`, ground on `jovida poll spec`): runs a check command on an interval, emits `<source>.<type>` on its false→true edge — for conditions nothing pushes (weather, CI status, a file appearing).

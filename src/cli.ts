@@ -332,6 +332,11 @@ Actions (give at least one; multiple --exec = multiple actions, run in order):
                          JOVIDA_ID, JOVIDA_AT, JOVIDA_TODAY, JOVIDA_TOMORROW, JOVIDA_<KEY> for each
                          data field, and JOVIDA_DATA (whole data as JSON). Use "$JOVIDA_TITLE", not {title}.
                          (best-effort, 30s timeout; output → daemon.log)
+  --create <title>       create a todo (first-class action — the safe, no-quoting way to do what
+                         'exec jovida create …' does). Companions: --create-when <ISO|{today}|{tomorrow}>,
+                         --create-priority <p>, --create-category <s>. title/when/… DO support {title}
+                         {source} {data.x} {today} … placeholders and are safe (run via argv, no shell).
+  --complete <id>        complete a todo by id (templated, e.g. --complete "{id}" or "{data.entry_id}").
   --notify-title <s>     fire a Jovida-branded desktop notification (--notify-message / --subtitle too).
                          These DO support {title} {source} {type} {data.x} {today} {tomorrow} placeholders
                          (safe — notify never touches a shell).
@@ -342,8 +347,8 @@ Other:
 Examples:
   # when a completed todo is in 健身, celebrate (notify uses {title} template)
   jovida rules add --when todo.completed --where category==健身 --notify-title "打卡✅" --notify-message "{title}"
-  # when Claude Code commits a feature (via a hook that emits claude.commit), remind to open a PR
-  jovida rules add --when claude.commit --where title=~^feat --exec 'jovida create "推送并开 PR：$JOVIDA_TITLE" --priority high'
+  # when Claude Code commits a feature (hook emits claude.commit), make a PR todo — no shell-quoting needed:
+  jovida rules add --when claude.commit --where title=~^feat --create "推送并开 PR：{title}" --create-when "{today}" --create-priority high
   # dry-run: which rules would a claude.commit fire?
   jovida rules test --source claude --type commit --title "feat(x): y"
 `,
@@ -724,6 +729,11 @@ async function main(): Promise<void> {
         notifyTitle: str(flags['notify-title']),
         notifyMessage: str(flags['notify-message']),
         subtitle: str(flags.subtitle),
+        create: str(flags.create),
+        createWhen: str(flags['create-when']),
+        createPriority: str(flags['create-priority']),
+        createCategory: str(flags['create-category']),
+        complete: str(flags.complete),
         cooldown: num(flags.cooldown),
         disabled: flags.disabled === true,
         envelope: str(flags.envelope),
