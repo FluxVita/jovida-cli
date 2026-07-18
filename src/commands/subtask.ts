@@ -1,6 +1,7 @@
 import { newSubtaskId } from '../core/ids'
 import type { Subtask, TodoEntry } from '../core/types'
 import type { Ctx } from '../ctx'
+import { loadForWrite } from '../snapshot'
 import { nowSec, NotFoundError } from './shared'
 
 const ACTIONS = ['check', 'uncheck', 'add', 'rm']
@@ -32,8 +33,7 @@ export async function cmdSubtask(ctx: Ctx, a: SubtaskArgs): Promise<void> {
   }
   if (!a.entryId) throw new Error(`entry_id required:  jovida subtask ${a.action} <entry_id> ...`)
 
-  await ctx.session.ensureSession()
-  const snap = await ctx.sync.pull()
+  const snap = await loadForWrite(ctx) // 读那半走本地;写仍落服务端
   const entry = snap.entries.find((x) => x.entryId === a.entryId)
   if (!entry) {
     if (snap.recurrings.find((s) => s.recurringId === a.entryId)) {

@@ -2,7 +2,7 @@
 // 走后端 v2 统一对象接口:数据装在 TodoItemDataset.items(以 itemType 判别 entry/recurring)。
 // 请求形与后端一致:PUT={ dataset:{items}, baseServerVersion };GET={ expectedServerVersion, pageToken, snapshotToken };均 proto3-JSON。
 import { ApiClient, ApiError } from './api'
-import { getLastServerVersion, setLastServerVersion, writeSnapshotCache, invalidateSnapshotCache } from './state'
+import { writeStore, clearStore, localServerVersion, applyUpsert } from './store'
 import {
   entryToItem,
   recurringToItem,
@@ -40,8 +40,7 @@ export class SyncClient {
     for (let attempt = 0; attempt < MAX_EXPIRED; attempt++) {
       const r = await this.pullOnce()
       if (r) {
-        setLastServerVersion(r.serverVersion)
-        writeSnapshotCache(r) // 任何全量 pull 都顺手刷新 `jovida due` 的缓存
+        writeStore(r) // 全量落本地库:推进 serverVersion + 覆盖为完整快照
         return r
       }
     }
@@ -78,19 +77,19 @@ export class SyncClient {
     return { entries, recurrings, serverVersion }
   }
 
-  /** 增量 upsert entries。409 SYNC_CONFLICT → pull 追平版本 → 重试。 */
+  /** upsert entries。409 SYNC_CONFLICT → pull 追平版本 → 重试;成功乐观并入本地库。 */
   async putEntries(items: TodoEntry[]): Promise<void> {
     for (let attempt = 0; attempt <= MAX_CONFLICT; attempt++) {
       try {
-        await this.api.post(PUT, {
+        const r = await this.api.post<{ serverVersion?: string | number }>(PUT, {
           dataset: { items: items.map(entryToItem) },
-          baseServerVersion: String(getLastServerVersion())
+          baseServerVersion: String(localServerVersion())
         })
-        invalidateSnapshotCache() // 写成功 → 缓存过时
+        applyUpsert({ entries: items }, r.serverVersion != null ? Number(r.serverVersion) : localServerVersion())
         return
       } catch (e) {
         if (e instanceof ApiError && e.status === 409 && attempt < MAX_CONFLICT) {
-          await this.pull() // 追平 lastServerVersion 后重试
+          await this.pull() // 追平本地版本后重试
           continue
         }
         throw e
@@ -98,15 +97,15 @@ export class SyncClient {
     }
   }
 
-  /** 增量 upsert 循环「类」(recurrings)。409 SYNC_CONFLICT → pull 追平 → 重试。 */
+  /** upsert 循环「类」(recurrings)。409 SYNC_CONFLICT → pull 追平 → 重试;成功乐观并入本地库。 */
   async putRecurrings(items: TodoRecurring[]): Promise<void> {
     for (let attempt = 0; attempt <= MAX_CONFLICT; attempt++) {
       try {
-        await this.api.post(PUT, {
+        const r = await this.api.post<{ serverVersion?: string | number }>(PUT, {
           dataset: { items: items.map(recurringToItem) },
-          baseServerVersion: String(getLastServerVersion())
+          baseServerVersion: String(localServerVersion())
         })
-        invalidateSnapshotCache()
+        applyUpsert({ recurrings: items }, r.serverVersion != null ? Number(r.serverVersion) : localServerVersion())
         return
       } catch (e) {
         if (e instanceof ApiError && e.status === 409 && attempt < MAX_CONFLICT) {
@@ -120,8 +119,9 @@ export class SyncClient {
 
   // 逐条删除(无 OCC 门控;对未知 id 幂等)。服务端为全局软删(写 deleted_at),但对客户端透明:
   // 快照过滤掉已删行,删除契约仍是「快照中缺失 ⇒ 已删」;同 id 再 put 会就地复活(覆盖、清 deleted_at)。
+  // delete 无版本回执,无法乐观推进本地版本 → 清本地库,下次读全量拉一次(delete 低频,可接受)。
   async deleteObjects(ids: string[]): Promise<void> {
     for (const itemId of ids) await this.api.post(DELETE, { itemId })
-    if (ids.length) invalidateSnapshotCache()
+    if (ids.length) clearStore()
   }
 }

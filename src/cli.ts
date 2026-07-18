@@ -3,6 +3,16 @@ import { makeCtx } from './ctx'
 import { cmdCreate } from './commands/create'
 import { cmdList } from './commands/list'
 import { cmdDue } from './commands/due'
+import { cmdWatch } from './commands/watch'
+import { cmdDaemon } from './commands/daemon'
+import { cmdRules } from './commands/rules'
+import { cmdPoll } from './commands/poll'
+import { cmdStream } from './commands/stream'
+import { cmdPack } from './commands/pack'
+import { cmdAutomations } from './commands/automations'
+import { cmdWorker } from './commands/worker'
+import { cmdTask } from './commands/task'
+import { cmdEmit } from './commands/emit'
 import { cmdImport } from './commands/import'
 import { cmdView } from './commands/view'
 import { cmdUpdate } from './commands/update'
@@ -16,13 +26,14 @@ import { cmdSkill } from './commands/skill'
 import { NotFoundError } from './commands/shared'
 import { NotSignedInError, LoginError } from './session'
 import { ApiError } from './api'
-import { clearCredentials, invalidateSnapshotCache } from './state'
+import { clearCredentials } from './state'
+import { clearStore } from './store'
 import { maybeNotifyUpdate } from './lib/update-check'
 
 const VERSION: string = require('../package.json').version
 
 // 可重复的值 flag（收集成数组）。其余值 flag 取最后一次。
-const REPEATABLE = new Set(['remind', 'subtask', 'agent'])
+const REPEATABLE = new Set(['remind', 'subtask', 'agent', 'where', 'exec', 'rule', 'poll', 'stream'])
 // 合法的无值(布尔)flag。其余 flag 缺值 = 用法错(防 `--remind`(漏值)被静默当 true→丢弃)。
 const BOOLEAN_FLAGS = new Set([
   'json',
@@ -35,6 +46,7 @@ const BOOLEAN_FLAGS = new Set([
   'ansi',
   'link', // 无值 = 默认 jovida.ai;也可 --link <url>
   'dry-run',
+  'disabled',
   'clear-when',
   'clear-remind',
   'clear-category',
@@ -103,12 +115,37 @@ Usage:
                           (--repeat needs --when as the first date)
   jovida list  [--scope today|upcoming|recent|range|all] [--status pending|completed|all]
                [--query <text>] [--category <s>] [--priority <p>]
-               [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--limit N] [--full] [--json]
+               [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--limit N] [--full] [--fresh] [--json]
   jovida due   [--within 2h|90m|1d] [--brief] [--fresh] [--json]
                # overdue + due-soon radar (statusline / agent-hook friendly; cached)
+  jovida watch [--json]
+               # stream todo changes in real time (push over SSE; not polling)
+  jovida daemon start|stop|status|restart [--json]
+               # background watcher: keeps the statusline cache live + fires desktop notifications
+  jovida rules list|add|rm|enable|disable|test
+               # "when X do Y" automations over a unified event envelope (the daemon runs them)
+               # e.g. jovida rules add --when claude.commit --where title=~^feat --exec 'jovida create ...'
+  jovida emit <source> <type> [--title <s>] [--id <s>] [--data <json>]
+               # push a custom event into the engine — any hook/cron/script becomes a trigger source
+               # (see: jovida help rules)
+  jovida poll list|add|rm|enable|disable|test
+               # a polling source: run a check on an interval, emit an event on its false→true edge
+               # e.g. jovida poll add --source weather --type rain --check '...' --interval 30m
+  jovida stream list|add|rm|enable|disable|test
+               # a streaming source: a long-lived command that prints one event envelope per line
+               # e.g. jovida stream add --source app --type error --cmd 'tail -F app.log | ...'
+  jovida pack export|import|save|install|list|show|rm
+               # bundle a whole automation (sources + rules) into one shareable file — a "shortcut"
+               # e.g. jovida pack save --name rain-umbrella --all  ·  jovida pack install rain-umbrella
+  jovida automations [--json]
+               # one screen: every source + rule + pack + the daemon's state (the trigger "home")
+  jovida worker start|stop|status|config
+               # a resident worker that runs dispatched tasks through a local agent (claude/codex/…)
+  jovida task add|list|show|clear
+               # the agent worker's task queue (a rule's --dispatch enqueues here)
   jovida import lark [--category <s>] [--dry-run] [--json]
                # one-way import of your incomplete Lark/Feishu tasks (idempotent, re-runnable)
-  jovida view <entry_id|recurring_id> [--json]
+  jovida view <entry_id|recurring_id> [--fresh] [--json]
   jovida update <entry_id|recurring_id> [--title ...] [--when ...] [--remind ...] [...]
                           (recurring_id: also --repeat/--every/--weekdays/--until to change the repeat rule)
   jovida complete <entry_id> [<entry_id> ...] [--json]
@@ -168,6 +205,8 @@ Options:
   --to <YYYY-MM-DD>    range end
   --limit <N>    max items (default 20)
   --full         JSON: include all fields (description, subtasks, reminders) — one round-trip instead of list + view
+  --fresh        bypass the local snapshot store and pull now (reads are served from a local
+                 copy, revalidated by a cheap version probe when older than 300s)
   --json
 
 Output carries "total" and "has_more" so you can tell when results were truncated by --limit.
@@ -213,6 +252,305 @@ Wire it into Claude Code (or any TUI agent):
                 due its one-liner is injected as context, so the agent reminds you in-chat
   Set JOVIDA_TIMEOUT_MS (e.g. 5000) in those commands so a bad network can't stall the TUI.
 `,
+  watch: `jovida watch — stream todo changes in real time (push, not polling)
+
+Usage:
+  jovida watch [--json]
+
+Subscribes to a live push channel over SSE (the general msghub ingress) and, whenever your
+todos change on the server (from any device or the agent), pulls the new snapshot and prints
+what changed. This is notify-then-pull: the push is a tiny signal; the diff is computed locally
+against the last snapshot, so no change is ever missed (a reconnect re-reconciles).
+
+Output:
+  --json / non-TTY   one JSON object per line (JSONL): {event, entry_id|recurring_id, title, ...}
+                     event ∈ added | updated | completed | reopened | deleted
+  TTY                a human-readable line per change
+
+Runs until Ctrl-C. Reconnects automatically (the connection is read-only; it never blocks on
+the network). Pipe it to an agent or a script:  jovida watch --json | your-tool
+
+Env: JOVIDA_API_URL (same backend as other commands). Requires \`jovida login\`.
+`,
+  daemon: `jovida daemon — background watcher: live statusline cache + desktop notifications
+
+Usage:
+  jovida daemon start      # detach a background watcher (subscribes to the push channel)
+  jovida daemon stop       # stop it
+  jovida daemon status     # is it running? connected? how many due? [--json]
+  jovida daemon restart
+  jovida daemon run        # run in the foreground (what 'start' detaches; use for debugging)
+
+One long-lived process turns the CLI from "pull" into "watch". On every change it:
+  1. refreshes the local snapshot and writes the rendered due-radar line (ansi + plain
+     variants) to statusline.json — your statusline just cats it: zero node spawn, always
+     current. Wire it up (falls back to \`jovida due --brief\` when the daemon is off):
+        cache=~/.jovida/cli/statusline.json
+        if [ -f "$cache" ]; then jq -r '.ansi' "$cache"; else jovida due --brief --ansi --link; fi
+  2. fires a native macOS notification (osascript, no dependency) for changes worth a nudge:
+     a new todo (from the agent or another device), a reminder coming due, a todo crossing
+     into overdue, or a completion/deletion from another device.
+
+Reminders and overdue-crossings aren't server pushes (no data changes) — the daemon holds the
+full snapshot, so it schedules local timers and rings on its own. Reconnects automatically;
+a reconnect re-reconciles so nothing is missed. Logs to ~/.jovida/cli/daemon.log.
+
+Needs a backend with the SSE ingress (\`/jov/msghub/v1/sse\`). Requires \`jovida login\`.
+`,
+  rules: `jovida rules — "when X do Y" automations over a unified event envelope
+
+Usage:
+  jovida rules list [--json]
+  jovida rules add --when <source.type> [--where <field=expr> ...] <action ...> [--cooldown <sec>] [--disabled]
+  jovida rules add --spec '<rule-json>' [--dry-run]        # apply a full rule object (agent-friendly)
+  jovida rules rm <id>
+  jovida rules enable <id> | disable <id>
+  jovida rules test (--source <s> --type <s> [--title <s>] [--data <json>] | --envelope <json>)
+  jovida rules spec [--json]                               # print the trigger protocol (for agents to ground on)
+
+For agents / programmatic authoring: run 'jovida rules spec --json' to learn the envelope, the built-in
+'todo' source vocabulary, the rule schema and matchers; produce a rule object; validate it with
+'jovida rules add --spec <json> --dry-run'; then apply it (drop --dry-run).
+
+The engine speaks one thing: an event **envelope** { source, type, title?, id?, at?, data? }.
+A rule matches an envelope by source.type (+ optional field filters) and runs actions. The **daemon**
+runs them (jovida daemon start); these commands just edit ~/.jovida/cli/rules.json (hand-editable too),
+which the running daemon picks up within seconds.
+
+Event sources (the 'source' of an envelope):
+  todo        built in — the daemon emits todo.<change> and todo.<moment>:
+              todo.added | todo.updated | todo.completed | todo.reopened | todo.deleted
+              todo.reminder | todo.overdue   (local time moments)
+  <your own>  push:    anything that runs 'jovida emit <source> <type> …' — a Claude Code hook, cron, a script.
+              poll:    'jovida poll add …' runs a check on an interval and emits on its false→true edge
+                       (weather/CI/file conditions; see: jovida help poll).
+              stream:  'jovida stream add …' supervises a long-lived command that prints one envelope
+                       per line (tail a log, subscribe a feed; see: jovida help stream).
+
+--when <source.type>     which events fire this rule. "todo.completed", "claude.commit",
+                         "weather.*" (any type of that source), or just "weather" (same as .*)
+--where <field=expr>     repeatable filter, AND-ed. field is an envelope path — bare keys resolve
+                         against top level then data (so 'category', 'priority' work for todo;
+                         'data.city' also works). expr: ~regex (case-insensitive) · =exact · else substring.
+                           --where title=~^feat   --where category==健身   --where cond=rain
+
+Actions (give at least one; multiple --exec = multiple actions, run in order):
+  --exec <cmd>           run 'sh -c <cmd>'. Data reaches it SAFELY via env vars + the envelope JSON on
+                         stdin — the command string is NOT interpolated (titles/messages may contain
+                         quotes or ';'). Env vars set: JOVIDA_SOURCE, JOVIDA_TYPE, JOVIDA_TITLE,
+                         JOVIDA_ID, JOVIDA_AT, JOVIDA_TODAY, JOVIDA_TOMORROW, JOVIDA_<KEY> for each
+                         data field, and JOVIDA_DATA (whole data as JSON). Use "$JOVIDA_TITLE", not {title}.
+                         (best-effort, 30s timeout; output → daemon.log)
+  --create <title>       create a todo (first-class action — the safe, no-quoting way to do what
+                         'exec jovida create …' does). Companions: --create-when <ISO|{today}|{tomorrow}>,
+                         --create-priority <p>, --create-category <s>. title/when/… DO support {title}
+                         {source} {data.x} {today} … placeholders and are safe (run via argv, no shell).
+  --complete <id>        complete a todo by id (templated, e.g. --complete "{id}" or "{data.entry_id}").
+  --dispatch <prompt>    queue a task for the local agent worker to actually do (templated). Companions:
+                         --dispatch-cwd <dir>, --dispatch-todo <id>. Needs a running worker with an
+                         agent configured (jovida worker start; jovida worker config). See: jovida help worker.
+  --notify-title <s>     fire a Jovida-branded desktop notification (--notify-message / --subtitle too).
+                         These DO support {title} {source} {type} {data.x} {today} {tomorrow} placeholders
+                         (safe — notify never touches a shell).
+
+Other:
+  --name <s>  a label · --cooldown <sec>  min seconds between fires (debounce) · --disabled  add switched off
+
+Examples:
+  # when a completed todo is in 健身, celebrate (notify uses {title} template)
+  jovida rules add --when todo.completed --where category==健身 --notify-title "打卡✅" --notify-message "{title}"
+  # when Claude Code commits a feature (hook emits claude.commit), make a PR todo — no shell-quoting needed:
+  jovida rules add --when claude.commit --where title=~^feat --create "推送并开 PR：{title}" --create-when "{today}" --create-priority high
+  # dry-run: which rules would a claude.commit fire?
+  jovida rules test --source claude --type commit --title "feat(x): y"
+  # when a todo lands in category 'agent', hand it to the local agent worker to actually do:
+  jovida rules add --when todo.added --where category==agent --dispatch "完成这个待办：{title}。说明：{data.description}" --dispatch-todo "{data.entry_id}"
+`,
+  emit: `jovida emit — push a custom event into the trigger engine (become a source)
+
+Usage:
+  jovida emit <source> <type> [--title <s>] [--id <s>] [--data <json>]
+
+Hands one event envelope { source, type, title?, id?, at?, data? } to the daemon, which matches it
+against your rules (see: jovida help rules) and runs the actions. This is how anything becomes a
+trigger source: a Claude Code hook, a cron job, a shell script — they all just call 'jovida emit'.
+
+Fire-and-forget: it writes the envelope to a spool (~/.jovida/cli/events/) and exits 0 even if the
+daemon isn't running — queued events are processed when the daemon next starts. 'at' is filled in
+automatically. --data is arbitrary JSON stored under the envelope's 'data' (matchable via --where data.x).
+
+Delivery: at-least-once — the daemon deletes a spooled event only after dispatching it, so a crash
+mid-drain re-processes it (an action may fire twice; keep actions idempotent where it matters). Events
+older than JOVIDA_EMIT_TTL_SEC (default 3600) are dropped un-fired, so a daemon started after a long
+absence doesn't replay a backlog of stale triggers (set ≤0 to disable the TTL).
+
+Examples:
+  jovida emit claude commit --title "feat(rules): 待办即触发器"
+  jovida emit weather rain --title "杭州有雨" --data '{"city":"Hangzhou","cond":"Light rain"}'
+
+Wire it into Claude Code (~/.claude/settings.json) — emit claude.commit after every git commit:
+  "hooks": { "PostToolUse": [{ "matcher": "Bash", "hooks": [{ "type": "command",
+    "command": "jq -er 'select(.tool_input.command|test(\\"git commit\\")).tool_input.command' >/dev/null && jovida emit claude commit --title \\"$(git log -1 --format=%s)\\"" }]}] }
+`,
+  poll: `jovida poll — a polling source: check a condition on an interval, emit an event on its rising edge
+
+Usage:
+  jovida poll list [--json]
+  jovida poll add --source <s> --type <s> --check '<sh -c cmd>' --interval <30s|5m|1h> [--title <s>] [--name <s>] [--disabled]
+  jovida poll add --spec '<poll-json>' [--dry-run]        # apply a full poll object (agent-friendly)
+  jovida poll rm <id>
+  jovida poll enable <id> | disable <id>
+  jovida poll test (<id> | --source <s> --type <s> --check '<cmd>' | --spec <json>)   # run the check once, show result
+  jovida poll spec [--json]                               # print the poll-source protocol (for agents)
+
+A poll source is the third way to feed the trigger engine (alongside built-in 'todo' and 'jovida emit').
+It's for conditions nothing pushes to you — weather, CI status, a file appearing, a URL going down. The
+**daemon** runs each check on its interval; you react to what it emits with an ordinary rule.
+
+  --check '<cmd>'    run 'sh -c <cmd>'. exit 0 = condition TRUE, non-zero = false. Its stdout is carried
+                     on the emitted envelope as data.output (matchable via --where data.output, template {data.output}).
+  --interval <dur>   how often to check: 30s | 5m | 1h | a plain number of seconds.
+  --source/--type    the envelope it emits: a rule with --when <source>.<type> reacts.
+  --title <s>        envelope title (defaults to the check's first stdout line, then the source name).
+
+Edge-triggered: it emits ONCE when the condition flips false→true — not repeatedly while true. When it flips
+back to false it re-arms. State persists across daemon restarts, so a restart mid-condition does NOT re-fire.
+(A brand-new poll whose condition is already true fires on its first check.)
+
+Two steps — define the source, then react to it:
+  jovida poll add --source weather --type rain --interval 30m \\
+    --check 'curl -sf "https://wttr.in/Hangzhou?format=%C" | grep -qiE "rain|drizzle|shower"'
+  jovida rules add --when weather.rain --exec 'jovida create "记得带伞 ☔️" --when "$JOVIDA_TODAY" --priority high'
+
+More examples:
+  # CI on this branch went red → make a fix-the-build todo
+  jovida poll add --source ci --type broken --interval 5m --check 'test "$(gh run list -L1 --json conclusion -q ".[0].conclusion")" = failure'
+  jovida rules add --when ci.broken --exec 'jovida create "修复 CI：$JOVIDA_TITLE" --priority high'
+  # dry-run a check before saving it
+  jovida poll test --source weather --type rain --check 'curl -sf "https://wttr.in/?format=%C" | grep -qi rain'
+`,
+  stream: `jovida stream — a streaming source: a long-lived command that prints one event envelope per line
+
+Usage:
+  jovida stream list [--json]
+  jovida stream add --cmd '<long-lived command>' [--source <s>] [--type <s>] [--name <s>] [--restart <sec>] [--disabled]
+  jovida stream add --spec '<stream-json>' [--dry-run]        # apply a full stream object (agent-friendly)
+  jovida stream rm <id>
+  jovida stream enable <id> | disable <id>
+  jovida stream test (<id> | --cmd '<cmd>' [--source <s>] [--type <s>] | --spec <json>)   # run ≤3s, show parsed envelopes
+  jovida stream spec [--json]                                 # print the stream-source protocol (for agents)
+
+The fourth way to feed the trigger engine (alongside built-in 'todo', 'jovida emit', and 'jovida poll').
+A stream is the streaming analog of emit: instead of one event, a program that keeps producing them. The
+**daemon** spawns it, supervises it (restart-on-exit with backoff), and routes each line; you react with a rule.
+
+  --cmd '<cmd>'      a long-lived 'sh -c' command. Each stdout line must be one envelope JSON object:
+                     { source?, type?, title?, id?, at?, data? }. Unparseable lines are skipped.
+  --source/--type    defaults stamped onto lines that omit them — so a generator that only prints its
+                     payload (e.g. {"title":"…","data":{…}}) still works when you set these.
+  --restart <sec>    restart backoff base after the command exits (default 3s; doubles on repeated fast
+                     exits, capped at 60s; a run of ≥10s resets it).
+
+Examples:
+  # tail an app log, emit app.error for every ERROR line
+  jovida stream add --name errors --source app --type error \\
+    --cmd 'tail -F /var/log/app.log | grep --line-buffered ERROR | while read l; do jq -nc --arg t "$l" "{title:\\$t}"; done'
+  jovida rules add --when app.error --exec 'jovida create "查错：$JOVIDA_TITLE" --priority high'
+  # a generator that prints full envelopes needs no defaults:
+  jovida stream add --cmd 'my-event-source --jsonl'    # each line: {"source":"x","type":"y","title":"z"}
+  # preview what a command emits before saving it:
+  jovida stream test --source app --type error --cmd 'printf "{\\"title\\":\\"boom\\"}\\n"'
+`,
+  worker: `jovida worker — a resident worker that runs dispatched tasks through a local agent
+
+Usage:
+  jovida worker start | stop | status | restart
+  jovida worker run                    # foreground (what 'start' detaches; for debugging)
+  jovida worker config [--agent-cmd '<cmd>'] [--cwd <dir>] [--timeout <sec>]   # show/set config
+
+The fourth piece of the trigger system (sources → rules → … → the worker actually DOES things). A rule's
+'--dispatch <prompt>' queues a task; this long-lived worker pulls tasks **one at a time** (serial — never
+two agents at once), runs your configured agent command on each, logs it, and marks it done/failed. On
+finish it emits a 'task.done' / 'task.failed' event back into the engine, so a rule can react (e.g.
+complete the linked todo). Separate process from the daemon; it doesn't need the network.
+
+Configure the agent command (required — the worker fails tasks until you set it, it never guesses):
+  jovida worker config --agent-cmd 'claude -p "$JOVIDA_TASK_PROMPT"' --cwd ~/agent-workspace
+The command runs via 'sh -c' in the task's cwd. The prompt reaches it SAFELY as \$JOVIDA_TASK_PROMPT
+(and on stdin) — it is never interpolated into the command string. Also set: JOVIDA_TASK_ID,
+JOVIDA_TODO_ID, JOVIDA_TASK_CWD. Any agent CLI works (claude, codex, …) — you own the command.
+
+Safety: an autonomous agent triggered by events is powerful. The worker only runs when you start it, only
+runs the command you configured, one task at a time, with a timeout (default 30m). Inspect with 'jovida task'.
+
+Needs 'jovida daemon' running too if you want dispatch-from-rules and the task.done feedback loop.
+Logs to ~/.jovida/cli/worker.log; per-task output to ~/.jovida/cli/tasks/<id>.log.
+`,
+  task: `jovida task — the agent worker's task queue
+
+Usage:
+  jovida task add "<instruction>" [--cwd <dir>] [--todo <entry_id>] [--agent '<cmd>']
+  jovida task list [--json]                 # queued / running / done / failed
+  jovida task show <id> [--json]            # detail + last 40 log lines
+  jovida task clear                         # remove finished (done/failed) tasks
+
+A task is a prompt the local agent worker runs (see: jovida help worker). Tasks are usually created by a
+rule's '--dispatch', but you can queue one by hand with 'task add'. --todo links a todo (carried on the
+task.done event so a rule can complete it); --agent overrides the worker's configured command for this task.
+
+Examples:
+  jovida task add "把 README 的安装步骤更新到最新的 flags" --cwd ~/proj
+  jovida worker start && jovida task list        # watch it get picked up
+`,
+  automations: `jovida automations — one screen for the whole trigger setup (alias: jovida auto)
+
+Usage:
+  jovida automations [--json]
+
+A read-only overview that pulls together what's otherwise spread across 'rules list', 'poll list',
+'stream list', and 'pack list', plus the daemon's state. Shows:
+  - the daemon (running? connected? pid)
+  - Sources: built-in 'todo', push ('jovida emit'), your poll sources, your stream sources
+  - Rules: each rule's when [where] → actions
+  - Packs: your saved shareable bundles
+
+Use it to see your automation setup at a glance; use the per-kind commands (rules/poll/stream/pack)
+to add, edit, or inspect details.
+`,
+  pack: `jovida pack — bundle a whole automation into one shareable file (your "shortcuts library")
+
+Usage:
+  jovida pack export --name <n> (--all | --rule <id> … --poll <id> … --stream <id> …) [--desc <s>] [--out <file>]
+  jovida pack import <file|->  [--dry-run] [--disabled]        # install a bundle (from a file or stdin)
+  jovida pack save --name <n> (--all | --rule/--poll/--stream <id> …) [--desc <s>]   # export into the local library
+  jovida pack install <name>   [--dry-run] [--disabled]        # install a bundle from the local library
+  jovida pack list                                             # list saved packs
+  jovida pack show <name>                                      # print a saved pack
+  jovida pack rm <name>                                        # delete a saved pack (installed defs stay)
+
+A **bundle** packages a coherent automation — its trigger source(s) and the rule(s) that react — as one JSON
+object { name, description?, rules[], polls[], streams[] }. It's the unit you share: export/save it, hand the
+file to someone (or another machine), and they 'import'/'install' it to get the same automation live.
+
+Selecting what to bundle (export/save): --all takes every current rule/poll/stream, or name specific ones with
+repeatable --rule/--poll/--stream <id> (id suffixes are accepted, as in 'rm').
+
+Installing (import/install): every definition gets a FRESH id, so a bundle is a template — installing it twice
+makes two copies, and it never clobbers your existing automations. Rules bind to sources by 'source.type' (a
+string), not by id, so re-id'ing is safe and keeps the rule→source wiring intact. --dry-run validates and shows
+the counts without writing; --disabled installs everything switched off so you can review before enabling.
+
+Examples:
+  # capture the "rain → umbrella" automation (its poll + the rule) and save it to your library
+  jovida pack save --name rain-umbrella --desc "下雨提醒带伞" --poll pol_… --rule rul_…
+  # share it: write the bundle to a file to send to a teammate
+  jovida pack export --name rain-umbrella --poll pol_… --rule rul_… --out rain-umbrella.json
+  # on the other machine: review first, then install
+  jovida pack import rain-umbrella.json --dry-run
+  jovida pack import rain-umbrella.json --disabled     # install off, then 'jovida rules/poll enable <id>'
+  # bundle your entire setup as a backup / starter kit
+  jovida pack save --name my-kit --all
+`,
   import: `jovida import — one-way import from an external source (currently: Lark/Feishu tasks)
 
 Usage:
@@ -242,10 +580,11 @@ Options:
   view: `jovida view — full details of one todo, a repeating todo, or one occurrence
 
 Usage:
-  jovida view <entry_id | recurring_id | occurrence_id> [--json]
+  jovida view <entry_id | recurring_id | occurrence_id> [--fresh] [--json]
 
 Given a repeating todo's recurring_id, shows its repeat rule.
 Given an occurrence id (from list, "recurring:…"), shows that occurrence with its rule.
+Served from the local snapshot store (revalidated by a version probe); --fresh forces a pull.
 `,
   update: `jovida update — change fields of a todo, a repeating todo, or one occurrence (only the given fields change)
 
@@ -392,7 +731,7 @@ async function main(): Promise<void> {
       break
     case 'logout':
       clearCredentials()
-      invalidateSnapshotCache() // 退出后不留上一账号的待办快照
+      clearStore() // 退出后不留上一账号的待办快照
       console.log(json ? JSON.stringify({ status: 'signed_out' }) : '✓ signed out')
       break
     case 'whoami':
@@ -431,6 +770,7 @@ async function main(): Promise<void> {
         category: str(flags.category),
         priority: str(flags.priority),
         full: flags.full === true,
+        fresh: flags.fresh === true,
         json
       })
       break
@@ -445,6 +785,123 @@ async function main(): Promise<void> {
         json
       })
       break
+    case 'watch':
+      await cmdWatch(ctx, { json })
+      break
+    case 'daemon':
+      await cmdDaemon(ctx, { action: positionals[0], json })
+      break
+    case 'rules':
+      cmdRules({
+        action: positionals[0],
+        positionals: positionals.slice(1),
+        spec: str(flags.spec),
+        dryRun: flags['dry-run'] === true,
+        name: str(flags.name),
+        when: str(flags.when),
+        where: arr(flags.where),
+        exec: arr(flags.exec),
+        notifyTitle: str(flags['notify-title']),
+        notifyMessage: str(flags['notify-message']),
+        subtitle: str(flags.subtitle),
+        create: str(flags.create),
+        createWhen: str(flags['create-when']),
+        createPriority: str(flags['create-priority']),
+        createCategory: str(flags['create-category']),
+        complete: str(flags.complete),
+        dispatch: str(flags.dispatch),
+        dispatchCwd: str(flags['dispatch-cwd']),
+        dispatchTodo: str(flags['dispatch-todo']),
+        cooldown: num(flags.cooldown),
+        disabled: flags.disabled === true,
+        envelope: str(flags.envelope),
+        source: str(flags.source),
+        type: str(flags.type),
+        title: str(flags.title),
+        data: str(flags.data),
+        json
+      })
+      break
+    case 'automations':
+    case 'auto':
+      cmdAutomations({ json })
+      break
+    case 'worker':
+      await cmdWorker({
+        action: positionals[0],
+        agentCmd: str(flags['agent-cmd']),
+        cwd: str(flags.cwd),
+        timeout: num(flags.timeout),
+        json
+      })
+      break
+    case 'task':
+      cmdTask({
+        action: positionals[0],
+        positionals: positionals.slice(1),
+        cwd: str(flags.cwd),
+        todo: str(flags.todo),
+        agent: arr(flags.agent)?.at(-1), // 'agent' 是可重复 flag(与 skill 共用),取最后一个当单值
+        json
+      })
+      break
+    case 'emit':
+      cmdEmit({
+        source: positionals[0],
+        type: positionals[1],
+        title: str(flags.title),
+        id: str(flags.id),
+        data: str(flags.data),
+        json
+      })
+      break
+    case 'poll':
+      cmdPoll({
+        action: positionals[0],
+        positionals: positionals.slice(1),
+        spec: str(flags.spec),
+        dryRun: flags['dry-run'] === true,
+        name: str(flags.name),
+        source: str(flags.source),
+        type: str(flags.type),
+        check: str(flags.check),
+        interval: str(flags.interval),
+        title: str(flags.title),
+        disabled: flags.disabled === true,
+        json
+      })
+      break
+    case 'stream':
+      await cmdStream({
+        action: positionals[0],
+        positionals: positionals.slice(1),
+        spec: str(flags.spec),
+        dryRun: flags['dry-run'] === true,
+        name: str(flags.name),
+        cmd: str(flags.cmd),
+        source: str(flags.source),
+        type: str(flags.type),
+        restart: num(flags.restart),
+        disabled: flags.disabled === true,
+        json
+      })
+      break
+    case 'pack':
+      cmdPack({
+        action: positionals[0],
+        positionals: positionals.slice(1),
+        name: str(flags.name),
+        desc: str(flags.desc),
+        rule: arr(flags.rule),
+        poll: arr(flags.poll),
+        stream: arr(flags.stream),
+        all: flags.all === true,
+        out: str(flags.out),
+        dryRun: flags['dry-run'] === true,
+        disabled: flags.disabled === true,
+        json
+      })
+      break
     case 'import':
       await cmdImport(ctx, {
         source: positionals[0],
@@ -454,7 +911,7 @@ async function main(): Promise<void> {
       })
       break
     case 'view':
-      await cmdView(ctx, { id: positionals[0], json })
+      await cmdView(ctx, { id: positionals[0], fresh: flags.fresh === true, json })
       break
     case 'update':
       await cmdUpdate(ctx, {

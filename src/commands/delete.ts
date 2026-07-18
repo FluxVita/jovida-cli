@@ -1,18 +1,19 @@
 import type { Ctx } from '../ctx'
 import { parseOccurrenceId } from '../core/recurrence'
+import { loadForWrite } from '../snapshot'
 import { NotFoundError } from './shared'
 
 export async function cmdDelete(ctx: Ctx, a: { ids: string[]; json?: boolean }): Promise<void> {
   if (!a.ids || a.ids.length === 0) {
     throw new Error('entry_id(s) required:  jovida delete <entry_id> [<entry_id> ...]')
   }
-  await ctx.session.ensureSession()
+  await ctx.session.ensureSession() // 写必须联网:先确保会话有效(非发生形删除不走 loadForWrite)
   // 发生形 id:已 fork 成真实条目(存在于快照)→ 放行删除;否则按其归属循环是否存在分类——
   // 属现存循环的未材料化发生 → 拒并指引(删除幂等会"成功"误导);否则纯属未知 id → not found。
-  // 仅当出现发生形 id 时才多拉一次校验,普通删除免拉。
+  // 仅当出现发生形 id 时才多读一次校验(走本地库,免全量 pull);普通删除免读。
   const occIds = a.ids.filter((id) => parseOccurrenceId(id))
   if (occIds.length) {
-    const snap = await ctx.sync.pull()
+    const snap = await loadForWrite(ctx)
     const real = new Set(snap.entries.map((e) => e.entryId))
     const notReal = occIds.filter((id) => !real.has(id))
     const hasSeries = (id: string): boolean => {

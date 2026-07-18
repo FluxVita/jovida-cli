@@ -1,6 +1,6 @@
 {
   "name": "@fluxvita/jovida-cli",
-  "version": "0.0.17",
+  "version": "0.5.0",
   "description": "Jovida Daily CLI — capture and manage your todos from the command line and AI agents",
   "license": "MIT",
   "bin": {
@@ -8,6 +8,7 @@
   },
   "files": [
     "dist",
+    "assets",
     "SKILL.md"
   ],
   "scripts": {
