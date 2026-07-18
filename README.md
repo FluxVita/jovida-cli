@@ -86,7 +86,8 @@ jovida complete <entry_id>
 
 ## Commands
 
-`create` · `list` · `due` · `view` · `update` · `complete` · `reopen` · `subtask` · `delete` · `import` · `login` · `logout` · `whoami`.
+**Todos** — `create` · `list` · `due` · `view` · `update` · `complete` · `reopen` · `subtask` · `delete` · `import` · `login` · `logout` · `whoami`.
+**Realtime & automations** — `watch` · `daemon` · `automations` · `rules` · `poll` · `stream` · `emit` · `pack` · `worker` · `task` (see below).
 `jovida help` lists usage; [`SKILL.md`](./SKILL.md) documents flags & field conventions.
 
 `jovida import lark` pulls your incomplete Lark/Feishu tasks into Jovida (one-way, idempotent — safe to re-run or schedule; tasks completed in Lark later get completed in Jovida on the next run). It reads via the official `lark-cli` (`npm i -g @larksuite/cli && lark-cli auth login --domain task`); see `jovida help import`.
@@ -116,6 +117,29 @@ Wire it into Claude Code (same idea works for any TUI agent with hooks/statuslin
 ```
 
 Set `JOVIDA_TIMEOUT_MS` (ms) in these commands so a bad network can never stall your TUI. For system-level notifications when no agent is open, run `jovida due --json` from cron/launchd and pipe into your notifier of choice.
+
+## Realtime push & automations
+
+The CLI can hold a live connection to your account and turn events into actions — a small, scriptable "when X happens, do Y" engine that any agent can also author.
+
+- **`jovida watch`** — stream todo changes as they happen (SSE push, not polling). One JSONL line per change; pipe it into a script or an agent. This is _notify-then-pull_: the push is a tiny signal, the diff is computed locally, so no change is ever missed and a reconnect re-reconciles.
+- **`jovida daemon start|stop|status`** — a resident background process that keeps `watch` open, refreshes a local snapshot, **fills your statusline instantly** (zero-startup: the statusline just reads a cached line), and **pops desktop notifications** on adds/completes/deletes and on due/overdue reminders (it holds the full snapshot locally and fires reminder timers itself, so "reminder time reached" needs no server round-trip).
+- **`jovida automations`** (alias `auto`) — one screen showing every source, rule, pack, and the daemon's state.
+
+**Rules = when / where / do.** Every event is a small envelope `{source, type, title, id, at, data}`; a rule fires when the source/type matches (`when`), optional field filters pass (`where`), and then runs its actions (`do`): `exec` a command, `notify`, `create` or `complete` a todo, or `dispatch` a task to a local agent. `jovida rules add|list|test|spec` — and `rules spec` + `rules add --spec '<json>'` + `--dry-run` let an AI agent write rules directly.
+
+**Four event sources** feed the same engine:
+
+- **`todo`** (built-in) — your todo changes and local reminder/overdue moments.
+- **`jovida emit <source> <type>`** — push one envelope from any hook/cron/script (`git` hook, CI, whatever). At-least-once, atomic spool.
+- **`jovida poll`** — run a check command on a schedule; fire once on the **rising edge** (false→true). Covers conditions nobody pushes you (weather, CI, a file).
+- **`jovida stream`** — a long-lived command that emits one JSONL envelope per line; the engine supervises and restarts it.
+
+**Share a setup** with `jovida pack export|import|save|install` — bundle a set of sources + rules into one file (a "shortcut"), re-instantiated safely on install.
+
+**Local agent worker** — `dispatch` writes a task to a queue; `jovida worker` runs a configured coding agent (e.g. `claude`/`codex`) against it and emits `task.done`/`task.failed` back into the engine, so a rule can react and close the loop. Data reaches `exec`/workers only via `$JOVIDA_*` env + stdin — never string-interpolated into a shell — so titles and commit messages can't inject.
+
+> The daemon connects to the same backend as every other command (your login). Notifications on macOS use a bundled `terminal-notifier` under Jovida Daily's identity; Windows/Linux notifications are not wired up yet.
 
 ## Auth
 
